@@ -1,0 +1,524 @@
+﻿@{
+    ViewData["Title"] = "QA Release Verification";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+
+    string currentUserName = "Unknown";
+    try
+    {
+        var token = Context.Request.Cookies["jwtToken"] ??
+                    Context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(token))
+        {
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(token);
+            currentUserName = jwtToken.Claims
+                .FirstOrDefault(c => c.Type == "given_name" || c.Type == "name" || c.Type == "unique_name")?.Value
+                ?? "Unknown";
+        }
+    }
+    catch { }
+
+    // Tech Leads who should not access this tester page
+    var techLeads = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "JIJIN E H", "MURUGESAN P", "NIKHIL SEKHAR", "SMINA BENNY", "VISAGH S", "JOBY JOSE"
+    };
+    bool isTechLead = techLeads.Contains(currentUserName.Trim());
+}
+
+@if (isTechLead)
+{
+    <div class="container-fluid mt-5">
+        <div class="alert alert-warning text-center py-5">
+            <h4><i class="fas fa-exclamation-triangle me-2"></i> Restricted Access</h4>
+            <p>This page is for testers only.</p>
+            <a href="@Url.Action("DailyVerificationTL", "Home")" class="btn btn-primary mt-3">
+                <i class="fas fa-arrow-right me-2"></i> Go to Tech Lead Verification Page
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid mt-4 px-2 px-md-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="mb-0 text-primary fw-bold">QA Release Verification</h3>
+            <span class="text-muted small">Verify released CRFs - Working status check</span>
+        </div>
+
+        <!-- Filters Card -->
+        <div class="card shadow border-0 mb-4">
+            <div class="card-header bg-gradient bg-primary text-white">
+                <h6 class="mb-0">Search Filters</h6>
+            </div>
+            <div class="card-body">
+                <form id="filterForm" novalidate>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label fw-semibold">Release Type</label>
+                            <select class="form-select form-select-lg" id="releaseType">
+                                <option value="">-- All Types --</option>
+                                <option value="Daily Release Report">Daily Release Report</option>
+                                <option value="Exceptional & Expedite Report">Exceptional & Expedite Report</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label fw-semibold">From Date <span class="text-danger">*</span></label>
+                            <input type="date"
+                                   class="form-control form-control-lg"
+                                   id="fromDate"
+                                   required />
+                            <div class="invalid-feedback">Please select From Date</div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label fw-semibold">To Date <span class="text-danger">*</span></label>
+                            <input type="date"
+                                   class="form-control form-control-lg"
+                                   id="toDate"
+                                   required />
+                            <div class="invalid-feedback">Please select To Date</div>
+                        </div>
+                        <div class="col-lg-3 col-md-12 d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg h-100">Search</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Results Table Card -->
+        <div class="card shadow border-0" id="resultCard" style="display:none;">
+            <div class="card-header bg-primary text-white d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+                <h5 class="mb-0">Verification List</h5>
+                <div class="d-flex flex-column flex-md-row gap-3 align-items-md-center">
+                    <small class="text-light opacity-90">
+                        Select Status + Add Remarks → Click <strong>Confirm</strong>
+                    </small>
+                    <div class="text-light">
+                        <strong>Total Records: <span id="totalRecords">0</span></strong>
+                    </div>
+                    <button type="button" class="btn btn-light btn-sm" id="exportExcelBtn">Export to Excel</button>
+                </div>
+            </div>
+
+            <div class="card-header border-bottom bg-light px-4 py-3 d-flex flex-column flex-md-row justify-content-between gap-3">
+                <div class="col-12 col-md-4">
+                    <input type="text" class="form-control" id="tableSearch" placeholder="Search by CRF ID or CRF Name..." />
+                </div>
+                <nav aria-label="Table pagination">
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item"><a class="page-link" href="#" id="prevPage">Previous</a></li>
+                        <li class="page-item"><a class="page-link" href="#" id="nextPage">Next</a></li>
+                    </ul>
+                    <span class="ms-3 text-muted small align-self-center">
+                        Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                    </span>
+                </nav>
+            </div>
+
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle text-nowrap" id="verificationTable">
+                        <thead class="table-primary sticky-top shadow-sm" style="z-index: 10;">
+                            <tr>
+                                <th class="ps-4">CRF ID</th>
+                                <th>Request ID</th>
+                                <th>Type</th>
+                                <th>CRF Name</th>
+                                <th>Release Date</th>
+                                <th>Tech Lead</th>
+                                <th>Developer</th>
+                                <th>Tester TL</th>
+                                <th>Tester</th>
+                                <th class="text-center" style="min-width:160px;">Status *</th>
+                                <th style="min-width:220px;">Remarks *</th>
+                                <th style="min-width:140px;">Attachment</th>
+                                <th class="text-center" style="min-width:110px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="verificationBody" class="bg-white"></tbody>
+                    </table>
+                </div>
+
+                <div class="text-center py-5 text-muted" id="emptyState" style="display:none;">
+                    <i class="fas fa-search fa-3x mb-4 text-muted opacity-50"></i>
+                    <h4 class="text-muted">No Records Found</h4>
+                    <p class="lead">No released CRFs match your selected filters.</p>
+                    <p>Try adjusting the date range or release type.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        const API_BASE = 'https://localhost:7118/api/QAReleaseVerification';
+
+        // Status options for dropdown
+        const STATUS_OPTIONS = [
+            "Working",
+            "Not Working",
+            "In Progress",
+            "Data need to capture",
+            "User feedback pending",
+            "Hold"
+        ];
+
+        const STATUS_MAP = {
+            1: "Working",
+            2: "Not Working",
+            3: "In Progress",
+            4: "Data need to capture",
+            5: "User feedback pending",
+            6: "Hold"
+        };
+
+        let verificationData = [];
+        let filteredData = [];
+        const pageSize = 10;
+        let currentPage = 1;
+
+        function formatDateForOracle(dateStr) {
+            if (!dateStr) return "";
+            const d = new Date(dateStr);
+            const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+            return `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`;
+        }
+
+        // Toast notification
+        function showToast(message, type = "success") {
+            const toast = document.createElement("div");
+            toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
+            toast.style.zIndex = 9999;
+            toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>`;
+            document.body.appendChild(toast);
+            new bootstrap.Toast(toast).show();
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // Search form submission with validation
+        document.getElementById("filterForm").addEventListener("submit", async e => {
+            e.preventDefault();
+
+            const fromDateInput = document.getElementById("fromDate");
+            const toDateInput = document.getElementById("toDate");
+
+            let valid = true;
+
+            // Reset validation styles
+            fromDateInput.classList.remove("is-invalid");
+            toDateInput.classList.remove("is-invalid");
+
+            // Required check
+            if (!fromDateInput.value) {
+                fromDateInput.classList.add("is-invalid");
+                valid = false;
+            }
+            if (!toDateInput.value) {
+                toDateInput.classList.add("is-invalid");
+                valid = false;
+            }
+
+            // From ≤ To check
+            if (fromDateInput.value && toDateInput.value) {
+                if (new Date(fromDateInput.value) > new Date(toDateInput.value)) {
+                    toDateInput.classList.add("is-invalid");
+                    showToast("From Date cannot be greater than To Date", "danger");
+                    valid = false;
+                }
+            }
+
+            if (!valid) return;
+
+            const payload = {
+                fromDate: formatDateForOracle(fromDateInput.value),
+                toDate: formatDateForOracle(toDateInput.value),
+                releaseType: document.getElementById("releaseType").value || null
+            };
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Searching...';
+
+            try {
+                const url = new URL(API_BASE);
+                url.searchParams.append('fromDate', payload.fromDate);
+                url.searchParams.append('toDate', payload.toDate);
+                if (payload.releaseType) {
+                    url.searchParams.append('releaseType', payload.releaseType);
+                }
+
+                const res = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`Server error ${res.status}: ${errText}`);
+                }
+
+                const rawData = await res.json();
+
+                if (!Array.isArray(rawData) || rawData.length === 0) {
+                    showToast("No records found for selected filters.", "info");
+                    verificationData = filteredData = [];
+                    document.getElementById("resultCard").style.display = "none";
+                    document.getElementById("emptyState").style.display = "block";
+                    return;
+                }
+
+                // Map data for table
+                verificationData = rawData.map(item => ({
+                    crfId: item.CRF_ID || "N/A",
+                    requestId: item.REQUEST_ID || "",
+                    subject: item.CRF_NAME || "Unknown CRF",
+                    releaseDate: item.RELEASE_DATE || "",
+                    techlead: item.TECHLEAD_NAME || "Not Assigned",
+                    developer: item.DEVELOPER_NAME || "Not Assigned",
+                    testerTL: item.TESTER_TL_NAME || "Not Assigned",
+                    tester: item.TESTER_NAME || "Not Assigned",
+                    releaseTypeText: item.RELEASE_TYPE || "",
+                    workingStatus: item.WORKING_STATUS ? STATUS_MAP[item.WORKING_STATUS] || "" : "",
+                    remarks: item.REMARKS || "",
+                    attachmentName: item.ATTACHMENT_NAME || "",
+                    isConfirmed: [1, 2].includes(item.VERIFY_STATUS) // 1=Tester verified, 2=TL approved
+                }));
+
+                filteredData = [...verificationData];
+                currentPage = 1;
+                updateTableAndPagination();
+                document.getElementById("resultCard").style.display = "block";
+                document.getElementById("emptyState").style.display = "none";
+
+            } catch (err) {
+                console.error("Search error:", err);
+                showToast("Failed to load data: " + err.message, "danger");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Search';
+            }
+        });
+
+        function updateTableAndPagination() {
+            document.getElementById("totalRecords").textContent = filteredData.length;
+            const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
+            document.getElementById("totalPages").textContent = totalPages;
+            document.getElementById("currentPage").textContent = currentPage;
+            document.getElementById("prevPage").parentElement.classList.toggle("disabled", currentPage === 1);
+            document.getElementById("nextPage").parentElement.classList.toggle("disabled", currentPage === totalPages);
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById("verificationBody");
+            tbody.innerHTML = "";
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const pageData = filteredData.slice(start, end);
+
+            if (filteredData.length === 0) {
+                document.getElementById("emptyState").style.display = "block";
+                return;
+            }
+            document.getElementById("emptyState").style.display = "none";
+
+            pageData.forEach((item, idx) => {
+                const globalIdx = filteredData.indexOf(item);
+                const isDaily = item.releaseTypeText.includes("Daily");
+                const badgeCls = isDaily ? "bg-primary" : "bg-warning text-dark";
+                const badgeText = isDaily ? "Daily" : "Exp.";
+                const canConfirm = item.workingStatus && (item.remarks || "").trim().length > 0;
+
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td class="ps-4 fw-bold text-primary">${item.crfId}</td>
+                    <td><span class="badge bg-secondary fs-7">${item.requestId || 'N/A'}</span></td>
+                    <td><span class="badge ${badgeCls} fs-7">${badgeText}</span></td>
+                    <td class="text-wrap" title="${item.subject}">${item.subject.length > 50 ? item.subject.substring(0,47)+'...' : item.subject}</td>
+                    <td>${item.releaseDate}</td>
+                    <td><strong>${item.techlead}</strong></td>
+                    <td>${item.developer}</td>
+                    <td><strong>${item.testerTL}</strong></td>
+                    <td><strong>${item.tester}</strong></td>
+                    <td class="text-center">
+                        ${item.isConfirmed
+                            ? `<span class="badge bg-success px-3 py-2 fs-7">${item.workingStatus}</span>`
+                            : `<select class="form-select form-select-sm status-select" data-idx="${globalIdx}">
+                                <option value="">-- Select --</option>
+                                ${STATUS_OPTIONS.map(opt => `<option value="${opt}" ${item.workingStatus === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+                               </select>`
+                        }
+                    </td>
+                    <td>
+                        <textarea class="form-control form-control-sm remarks-text w-100" rows="3" data-idx="${globalIdx}"
+                            ${item.isConfirmed ? 'readonly' : ''} placeholder="Enter remarks...">${item.remarks || ''}</textarea>
+                        <small class="text-muted d-block mt-1 word-count" data-idx="${globalIdx}">
+                            ${(item.remarks || '').trim().split(/\s+/).filter(w => w.length > 0).length} words
+                        </small>
+                    </td>
+                    <td class="text-center">
+                        ${!item.isConfirmed
+                            ? `<input type="file" class="form-control form-control-sm file-input" data-idx="${globalIdx}" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">`
+                            : (item.attachmentName
+                                ? `<a href="#" class="btn btn-sm btn-outline-primary"><i class="fas fa-paperclip me-1"></i>${item.attachmentName}</a>`
+                                : '-')
+                        }
+                    </td>
+                    <td class="text-center">
+                        <button class="btn ${item.isConfirmed ? 'btn-success' : (canConfirm ? 'btn-primary' : 'btn-secondary')} btn-sm px-4 confirm-btn"
+                                data-idx="${globalIdx}" ${item.isConfirmed || !canConfirm ? 'disabled' : ''}>
+                            ${item.isConfirmed ? 'Confirmed' : 'Confirm'}
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            attachEvents();
+        }
+
+        function attachEvents() {
+            document.querySelectorAll(".status-select").forEach(sel => {
+                sel.addEventListener("change", e => {
+                    const idx = e.target.dataset.idx;
+                    verificationData[idx].workingStatus = e.target.value;
+                    updateConfirmButton(idx);
+                });
+            });
+
+            document.querySelectorAll(".remarks-text").forEach(ta => {
+                ta.addEventListener("input", e => {
+                    const idx = e.target.dataset.idx;
+                    verificationData[idx].remarks = e.target.value;
+                    const words = e.target.value.trim().split(/\s+/).filter(w => w.length > 0).length;
+                    ta.parentElement.querySelector(".word-count").textContent = words + " words";
+                    updateConfirmButton(idx);
+                });
+            });
+
+            document.querySelectorAll(".confirm-btn").forEach(btn => {
+                btn.addEventListener("click", async e => {
+                    const idx = e.target.dataset.idx;
+                    await saveItem(verificationData[idx]);
+                });
+            });
+        }
+
+        function updateConfirmButton(idx) {
+            const item = verificationData[idx];
+            const can = item.workingStatus && (item.remarks || "").trim().length > 0;
+            const btn = document.querySelector(`.confirm-btn[data-idx="${idx}"]`);
+            if (btn) {
+                btn.disabled = !can;
+                btn.className = `btn btn-sm px-4 confirm-btn ${can ? 'btn-primary' : 'btn-secondary'}`;
+            }
+        }
+
+        async function saveItem(item) {
+            if (!item.workingStatus) return showToast("Please select a Status", "danger");
+            if (!item.remarks?.trim()) return showToast("Remarks are mandatory", "danger");
+
+            const fileInput = document.querySelector(`.file-input[data-idx="${verificationData.indexOf(item)}"]`);
+            const file = fileInput?.files[0];
+            let attachmentBase64 = null, attachmentName = null, attachmentMime = null;
+
+            if (file) {
+                attachmentBase64 = await fileToBase64(file);
+                attachmentName = file.name;
+                attachmentMime = file.type;
+            }
+
+            const payload = [{
+                crfId: item.crfId,
+                requestId: item.requestId || null,
+                releaseDate: item.releaseDate,
+                workingStatus: item.workingStatus,
+                remarks: item.remarks.trim(),
+                attachmentName: attachmentName,
+                attachmentBase64: attachmentBase64,
+                attachmentMime: attachmentMime
+            }];
+
+            try {
+                const res = await fetch(`${API_BASE}/Save`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showToast("Verification saved successfully!", "success");
+                    document.getElementById("filterForm").dispatchEvent(new Event('submit'));
+                } else {
+                    const text = await res.text();
+                    showToast("Save failed: " + text, "danger");
+                }
+            } catch (err) {
+                showToast("Error: " + err.message, "danger");
+            }
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Pagination & Search
+        document.getElementById("prevPage").addEventListener("click", e => {
+            e.preventDefault();
+            if (currentPage > 1) { currentPage--; updateTableAndPagination(); }
+        });
+
+        document.getElementById("nextPage").addEventListener("click", e => {
+            e.preventDefault();
+            if (currentPage < Math.ceil(filteredData.length / pageSize)) { currentPage++; updateTableAndPagination(); }
+        });
+
+        document.getElementById("tableSearch").addEventListener("input", e => {
+            const query = e.target.value.toLowerCase();
+            filteredData = verificationData.filter(item =>
+                item.crfId.toLowerCase().includes(query) || 
+                item.subject.toLowerCase().includes(query)
+            );
+            currentPage = 1;
+            updateTableAndPagination();
+        });
+
+        // Export to Excel
+        document.getElementById("exportExcelBtn").addEventListener("click", () => {
+            if (filteredData.length === 0) return alert("No data to export!");
+
+            const dataToExport = filteredData.map(item => ({
+                "CRF ID": item.crfId,
+                "Request ID": item.requestId || "N/A",
+                "Type": item.releaseTypeText.includes("Daily") ? "Daily" : "Exp.",
+                "CRF Name": item.subject,
+                "Release Date": item.releaseDate,
+                "Tech Lead": item.techlead,
+                "Developer": item.developer,
+                "Tester TL": item.testerTL,
+                "Tester": item.tester,
+                "Status": item.workingStatus || "Pending",
+                "Remarks": (item.remarks || "").replace(/\n/g, " "),
+                "Attachment": item.attachmentName || "None"
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "QA Verification");
+            ws['!cols'] = [{wch:12},{wch:15},{wch:10},{wch:50},{wch:15},{wch:20},{wch:30},{wch:20},{wch:20},{wch:25},{wch:40},{wch:25}];
+            XLSX.writeFile(wb, `QA_Release_Verification_${new Date().toISOString().slice(0,10)}.xlsx`);
+        });
+    </script>
+    }
+}

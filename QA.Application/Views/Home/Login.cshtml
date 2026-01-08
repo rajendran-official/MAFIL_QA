@@ -1,0 +1,124 @@
+﻿@inject IConfiguration Configuration
+@{
+    ViewData["Title"] = "Login";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - QA Department</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" asp-append-version="true" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-p5F1b1LqF7fJ2l3uA0rZ8K5bH6f8p9fREqDVfM0I8eV6iJ9fS1d8Z3Yk1oN1rI3nH0s1i6f8fB8u5uWjJt0d9m8Q==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="~/css/login.css" asp-append-version="true" />
+</head>
+<body>
+    <div class="login-container">
+        <div class="left-side">
+            <img src="https://annapurnafinance.in/wp-content/uploads/2023/10/Manappuram.png" alt="Manappuram Finance Limited Logo" class="logo-img">
+            <h1>MAFIL QA</h1>
+           @*  <p>Stay ahead of risks with intelligent insights and proactive monitoring.</p> *@
+           @*  <div class="tagline">Manappuram Finance Limited - Make Life Easy</div> *@
+        </div>
+        <div class="right-side">
+            <h2 class="text-center mb-4">Employee Login</h2>
+            <div id="errorMessage"></div>
+            <form id="loginForm" autocomplete="off">
+                <!-- Fake fields to prevent autocomplete -->
+                <input type="text" style="display:none;" />
+                <input type="password" style="display:none;" />
+                <div class="form-group">
+                    <label for="EmpCode">Emp Code</label>
+                    <input type="text" id="EmpCode" class="form-control" placeholder="Enter Emp Code" required autofocus />
+                </div>
+                <div class="form-group">
+                    <label for="Password">Password</label>
+                    <input type="password" id="Password" class="form-control" placeholder="Enter Password" required />
+                </div>
+                <button type="submit" class="btn-login">
+                    <i class="fas fa-sign-in-alt me-2"></i> Login
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const errorDiv = document.getElementById("errorMessage");
+            const loginForm = document.getElementById("loginForm");
+            // Get API base from server-side config
+            const apiBase = '@Configuration["AppSettings:ApiBaseUrl"]'.trim();
+            const loginUrl = apiBase ? `${apiBase}/api/Auth/login` : '/api/Auth/login';
+            loginForm.addEventListener("submit", async function (e) {
+                e.preventDefault();
+                const empCode = document.getElementById("EmpCode").value.trim();
+                const password = document.getElementById("Password").value;
+                // Clear previous alerts
+                errorDiv.innerHTML = "";
+                if (!empCode || !password) {
+                    showAlert("Please enter both Emp Code and Password.", "warning");
+                    return;
+                }
+                try {
+                    const response = await fetch(loginUrl, {
+                        method: 'POST',
+                        credentials: 'include', // Important for cookies
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ EmpCode: empCode, Password: password })
+                    });
+                    if (!response.ok) {
+                        let msg = "Login failed. Please try again.";
+                        try {
+                            const data = await response.json();
+                            msg = data.message || "Unknown error";
+                        } catch (e) {
+                            console.error("Failed to parse error response", e);
+                            msg = "Server error - unable to get details";
+                        }
+                        // Show the EXACT message from API
+                        showAlert(msg, "danger");
+                        return;
+                    }
+                    const data = await response.json();
+                    localStorage.setItem('empName', data.empName || 'User');
+                    localStorage.setItem('empCode', data.empCode || empCode);
+                    //showAlert("Login successful!", "success");
+                    setTimeout(() => {
+                        window.location.href = '/MAFIL_QA/Home/Dashboard';
+                    }, 1500);
+                } catch (err) {
+                    showAlert("Cannot connect to server.<br>Please ensure QA.API is running.", "danger");
+                    console.error("Login error:", err);
+                }
+            });
+            function showAlert(message, type = "info") {
+                const icons = {
+                    success: "fa-check-circle",
+                    danger: "fa-exclamation-circle",
+                    warning: "fa-exclamation-triangle",
+                    info: "fa-info-circle"
+                };
+                const colors = {
+                    success: "text-success bg-success-subtle border-success",
+                    danger: "text-danger bg-danger-subtle border-danger",
+                    warning: "text-warning bg-warning-subtle border-warning",
+                    info: "text-info bg-info-subtle border-info"
+                };
+                errorDiv.innerHTML = `
+                            <div class="alert alert-dismissible fade show rounded-4 shadow-sm border border-2 ${colors[type]} py-3 px-4" role="alert">
+                                <div class="d-flex align-items-start">
+                                    <i class="fas ${icons[type]} fa-2x me-3 mt-1"></i>
+                                    <div class="fw-medium">${message}</div>
+                                </div>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>`;
+            }
+        });
+    </script>
+</body>
+</html>

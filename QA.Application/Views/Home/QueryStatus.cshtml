@@ -1,0 +1,308 @@
+﻿@model QA.Application.Models.QueryViewModel
+@{
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+    ViewData["Title"] = "Query Status Check";
+}
+
+<div class="content-container">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-search me-3"></i>Query Status Verification
+        </h2>
+        <small class="text-muted">Check row count and execution status of registered queries</small>
+    </div>
+
+    <!-- Filter Options -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white fw-bold">
+            <i class="fas fa-filter me-2"></i>Filter Options
+        </div>
+        <div class="card-body">
+            <form asp-action="QueryStatus" method="post" class="row g-3 align-items-end">
+                @Html.AntiForgeryToken()
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Department <span class="text-danger">*</span></label>
+                    <select asp-for="FilterDepartmentId" class="form-select form-select-lg" id="filterDeptDropdown">
+                        <option value="-1">-- All Department --</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Module <span class="text-danger">*</span></label>
+                    <select asp-for="FilterModuleId" class="form-select form-select-lg" id="filterModuleDropdown">
+                        <option value="-1">-- All Module --</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">From Date <span class="text-danger">*</span></label>
+                    <input type="date" asp-for="FromDate" class="form-control form-control-lg" required />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">To Date <span class="text-danger">*</span></label>
+                    <input type="date" asp-for="ToDate" class="form-control form-control-lg" required />
+                </div>
+                <div class="col-12 text-end">
+                    <button type="submit" name="action" value="filter" class="btn btn-primary btn-lg">
+                        <i class="fas fa-check me-2"></i>Submit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results -->
+    @if (ViewBag.ShowResults == true)
+    {
+        @if (Model.Results != null && Model.Results.Any())
+        {
+            <div class="card shadow mb-5">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-table me-2"></i>Query Execution Results</h5>
+                    <small>Showing @Model.Results.Count record(s)</small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="bg-light text-dark fw-semibold">
+                                <tr>
+                                    <th class="text-center" style="width:80px;">S.No</th>
+                                    <th>Activity / Control</th>
+                                    <th>Department</th>
+                                    <th>Module</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-center">Row Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+                                    int serialNo = 1;
+                                }
+                                @foreach (var item in Model.Results)
+                                {
+                                    var rowClass = item.RowCount > 0 ? "table-success" : "table-danger";
+                                    <tr class="@rowClass">
+                                        <td class="text-center fw-bold">@serialNo</td>
+                                        <td class="fw-medium">@(item.ControlName ?? "N/A")</td>
+                                        <td>@(item.DepartmentName ?? "-")</td>
+                                        <td>@(item.ModuleName ?? "-")</td>
+                                        <td class="text-center">
+                                            <span class="badge @(item.RowCount > 0 ? "bg-success" : "bg-danger") px-4 py-2">
+                                                @(item.RowCount > 0 ? "Success" : "Failed")
+                                            </span>
+                                        </td>
+                                        <td class="text-center fw-bold fs-5">@item.RowCount</td>
+                                    </tr>
+                                    serialNo++;
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="text-center py-5">
+                <i class="fas fa-info-circle fa-5x text-muted mb-4"></i>
+                <h4 class="text-muted">No queries found matching the selected filters.</h4>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="text-center py-5 bg-light rounded">
+            <i class="fas fa-filter fa-5x text-primary mb-4 opacity-50"></i>
+            <h4 class="text-muted">Please select Department and Module, then click Submit to view results</h4>
+        </div>
+    }
+
+    <!-- Add New Query -->
+    <div class="card shadow">
+        <div class="card-header bg-info text-white fw-bold">
+            <i class="fas fa-plus-circle me-2"></i>Add New Query
+        </div>
+        <div class="card-body">
+            <form asp-action="QueryStatus" method="post" class="row g-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="FilterDepartmentId" />
+                <input type="hidden" asp-for="FilterModuleId" />
+                <input type="hidden" asp-for="FromDate" />
+                <input type="hidden" asp-for="ToDate" />
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Department <span class="text-danger">*</span></label>
+                    <select asp-for="DepartmentId" class="form-select form-select-lg" id="deptDropdown" required>
+                        <option value="-1">-- All Department --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Module <span class="text-danger">*</span></label>
+                    <select asp-for="ModuleId" class="form-select form-select-lg" id="moduleDropdown" required>
+                        <option value="-1">-- All Module --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Control Name / Activity <span class="text-danger">*</span></label>
+                    <input type="text" asp-for="ControlName" class="form-control form-control-lg" required />
+                </div>
+
+                <div class="col-12 mt-3">
+                    <label class="form-label fw-bold">Query Text (SELECT only) <span class="text-danger">*</span></label>
+                    <textarea asp-for="Query" class="form-control" rows="8" required></textarea>
+                </div>
+
+                <div class="col-12 text-end">
+                    <button type="submit" name="action" value="add" class="btn btn-primary btn-lg">
+                        <i class="fas fa-upload me-2"></i>Upload Query
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="modal fade show" id="successModal" tabindex="-1" style="display: block; background: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content shadow-lg border-0">
+                    <div class="modal-body text-center py-5">
+                        <div class="text-success mb-4">
+                            <i class="fas fa-check-circle fa-5x"></i>
+                        </div>
+                        <h3 class="text-success fw-bold">Congratulations!</h3>
+                        <p class="lead">@TempData["SuccessMessage"]</p>
+                        <button type="button" class="btn btn-primary px-5" onclick="location.reload()">
+                            OK
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            let allModulesCache = [];
+
+            function loadDepartments() {
+                $.getJSON('/Home/GetDepartments')
+                    .done(function (data) {
+                        // Filter Section
+                        var filterDept = $('#filterDeptDropdown');
+                        filterDept.empty();
+                        filterDept.append($('<option>', { value: -1, text: '-- All Department --' }));
+
+                        // Add New Query Section
+                        var addDept = $('#deptDropdown');
+                        addDept.empty();
+                        addDept.append($('<option>', { value: -1, text: '-- All Department --' }));
+
+                        $.each(data, function (i, item) {
+                            filterDept.append($('<option>', { value: item.id, text: item.name }));
+                            addDept.append($('<option>', { value: item.id, text: item.name }));
+                        });
+
+                        // Restore selected values
+        @if (Model.FilterDepartmentId.HasValue)
+        {
+            @:filterDept.val(@Model.FilterDepartmentId);
+        }
+        else
+        {
+            @:filterDept.val(-1);
+        }
+
+        @if (Model.DepartmentId.HasValue)
+        {
+            @:addDept.val(@Model.DepartmentId);
+        }
+        else
+        {
+            @:addDept.val(-1);
+        }
+
+                            // Load modules based on current selection
+                            loadModules('#filterDeptDropdown', '#filterModuleDropdown', '@Model.FilterModuleId');
+                        loadModules('#deptDropdown', '#moduleDropdown', '@Model.ModuleId');
+                    });
+            }
+
+            function loadAllModules(selectedId = null, targetDropdown) {
+                if (allModulesCache.length > 0) {
+                    populateDropdown(allModulesCache, selectedId, targetDropdown);
+                    return;
+                }
+
+                $.getJSON('/Home/GetDepartments')
+                    .done(function (depts) {
+                        let promises = [];
+                        allModulesCache = [];
+
+                        $.each(depts, function (i, dept) {
+                            promises.push(
+                                $.getJSON('/Home/GetModules?deptId=' + dept.id)
+                                    .done(function (mods) {
+                                        $.each(mods, function (j, mod) {
+                                            allModulesCache.push({ id: mod.id, name: mod.name });
+                                        });
+                                    })
+                            );
+                        });
+
+                        $.when.apply($, promises).done(function () {
+                            allModulesCache.sort((a, b) => a.name.localeCompare(b.name));
+                            populateDropdown(allModulesCache, selectedId, targetDropdown);
+                        });
+                    });
+            }
+
+            function loadSpecificModules(deptId, selectedId = null, targetDropdown) {
+                $.getJSON('/Home/GetModules?deptId=' + deptId)
+                    .done(function (data) {
+                        populateDropdown(data, selectedId, targetDropdown);
+                    });
+            }
+
+            function populateDropdown(data, selectedId, dropdownId) {
+                var dropdown = $(dropdownId);
+                dropdown.empty();
+                dropdown.append($('<option>', { value: -1, text: '-- All Module --' }));
+
+                $.each(data, function (i, item) {
+                    dropdown.append($('<option>', { value: item.id, text: item.name }));
+                });
+
+                if (selectedId && selectedId > 0) {
+                    dropdown.val(selectedId);
+                } else {
+                    dropdown.val(-1);
+                }
+            }
+
+            function loadModules(deptDropdownId, moduleDropdownId, selectedModuleId) {
+                var deptId = $(deptDropdownId).val();
+                if (deptId == -1 || !deptId) {
+                    loadAllModules(selectedModuleId, moduleDropdownId);
+                } else {
+                    loadSpecificModules(deptId, selectedModuleId, moduleDropdownId);
+                }
+            }
+
+            // Initial load
+            loadDepartments();
+
+            // Change events
+            $('#filterDeptDropdown, #deptDropdown').change(function () {
+                var isFilter = this.id === 'filterDeptDropdown';
+                var moduleId = isFilter ? '#filterModuleDropdown' : '#moduleDropdown';
+                loadModules('#' + this.id, moduleId, null);
+            });
+        });
+    </script>
+}

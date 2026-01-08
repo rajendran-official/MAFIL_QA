@@ -1,0 +1,184 @@
+﻿@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QA APPLICATION</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
+   
+</head>
+<body>
+    <!-- Mobile Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-logo text-center py-3">
+            <img src="https://annapurnafinance.in/wp-content/uploads/2023/10/Manappuram.png" alt="Manappuram Finance Limited" class="manappuram-logo">
+        </div>
+        <div class="sidebar-header px-4 py-3">
+            <h5 class="text-white mb-0 fw-bold">Menu</h5>
+        </div>
+        <div class="sidebar-menu">
+            <ul class="nav flex-column px-3">
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/Dashboard") ? "active" : "")"
+                       asp-controller="Home" asp-action="Dashboard">
+                        <i class="fas fa-tachometer-alt me-3"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/KYCDeviationReport") ? "active" : "")"
+                       asp-controller="Home" asp-action="KYCDeviationReport">
+                        <i class="fas fa-exclamation-triangle me-3"></i> KYC Deviation Report
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/DailyCustomerData") ? "active" : "")"
+                       asp-controller="Home" asp-action="DailyCustomerData">
+                        <i class="fas fa-users me-3"></i> Daily Customer Data
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/DailyReleaseVerificationNew") ? "active" : "")"
+                       asp-controller="Home" asp-action="DailyReleaseVerificationNew">
+                        <i class="fas fa-calendar-check me-3"></i> Daily Release Verification New
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/DailyVerificationTL") ? "active" : "")"
+                       asp-controller="Home" asp-action="DailyVerificationTL">
+                        <i class="fas fa-user-check me-3"></i> Daily Verification TL
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/QueryStatus") ? "active" : "")"
+                       asp-controller="Home" asp-action="QueryStatus">
+                        <i class="fas fa-search me-3"></i> Query Status Check
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/ProcedureMonitor/Index") ? "active" : "")"
+                       asp-controller="ProcedureMonitor" asp-action="Index">
+                        <i class="fas fa-microchip me-3"></i> Daily Procedure Monitor
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="@Url.Action("CRFList", "Home")">
+                        <i class="fas fa-list-alt me-3"></i> CRF List
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container-fluid">
+            <button class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <a class="navbar-brand fw-bold ms-2" href="#">QUALITY ASSURANCE TEAM Portal</a>
+            <div class="ms-auto d-flex align-items-center">
+                <div class="dropdown">
+                    <a class="text-white dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-user-circle fa-xl me-2"></i>
+                        <span id="navbarUserName">User</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" id="logoutBtn">Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content" id="mainContent">
+        <div class="container-fluid pt-4">
+            @RenderBody()
+        </div>
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            const overlay = document.getElementById('sidebarOverlay');
+            const toggle = document.getElementById('menuToggle');
+
+            // Set username
+            let empName = localStorage.getItem('empName');
+            if (!empName || empName === "null" || empName === "") {
+                const token = localStorage.getItem('jwtToken');
+                if (token) {
+                    try {
+                        const payload = JSON.parse(atob(token.split('.')[1]));
+                        empName = payload.name || payload.fullname || payload.unique_name || payload.sub || "User";
+                    } catch (e) { empName = "User"; }
+                } else {
+                    empName = "User";
+                }
+            }
+            document.getElementById('navbarUserName').textContent = empName;
+            if (document.getElementById('welcomeUserName')) {
+                document.getElementById('welcomeUserName').textContent = empName.toUpperCase();
+            }
+
+            // Load saved sidebar state (optional - remembers collapse preference)
+            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (isCollapsed) {
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('expanded');
+            }
+
+            // Toggle sidebar
+            toggle.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                if (window.innerWidth <= 992) {
+                    // Mobile: slide in/out with overlay
+                    sidebar.classList.toggle('show');
+                    overlay.classList.toggle('show');
+                } else {
+                    // Desktop: collapse/expand permanently
+                    sidebar.classList.toggle('collapsed');
+                    mainContent.classList.toggle('expanded');
+
+                    // Save preference
+                    const collapsed = sidebar.classList.contains('collapsed');
+                    localStorage.setItem('sidebarCollapsed', collapsed);
+                }
+            });
+
+            // Close on overlay click (mobile only)
+            overlay.addEventListener('click', () => {
+                sidebar.classList.remove('show');
+                overlay.classList.remove('show');
+            });
+
+            // Logout
+            document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (confirm('Are you sure you want to logout?')) {
+                    localStorage.clear();
+                    window.location.href = '/Home/Login';
+                }
+            });
+        });
+    </script>
+
+    @if (IsSectionDefined("Scripts"))
+    {
+        @RenderSection("Scripts", required: false)
+    }
+</body>
+</html>

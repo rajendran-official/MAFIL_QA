@@ -1,0 +1,300 @@
+﻿@{
+    ViewData["Title"] = "CRF List - Completed Verifications";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+
+<div class="container-fluid mt-4 px-2 px-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0 text-success fw-bold">
+            <i class="fas fa-check-circle me-2"></i>CRF List (Completed)
+        </h3>
+        <span class="text-muted small">All CRFs confirmed by Tech Lead</span>
+    </div>
+
+    <!-- Filters -->
+    <div class="card shadow border-0 mb-4">
+        <div class="card-header bg-gradient bg-success text-white">
+            <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Search Filters</h6>
+        </div>
+        <div class="card-body">
+            <form id="crfListFilterForm">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label fw-semibold">From Date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="crfFromDate" required />
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label fw-semibold">To Date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="crfToDate" required />
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label fw-semibold">Release Type</label>
+                        <select class="form-select" id="crfReleaseType">
+                            <option value="">All Types</option>
+                            <option value="Daily Release Report">Daily Release Report</option>
+                            <option value="Exceptional & Expedite Report">Exceptional & Expedite</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-12">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card shadow border-0" id="crfListCard" style="display:none;">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-list-check me-2"></i>Completed Verifications (<span id="crfTotal">0</span>)
+            </h5>
+            <button class="btn btn-light btn-sm" id="exportCompletedExcel">
+                <i class="fas fa-file-excel me-1"></i> Export to Excel
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle text-nowrap" id="crfListTable">
+                    <thead class="table-success sticky-top">
+                        <tr>
+                            <th class="ps-3">CRF ID</th>
+                            <th>Request ID</th>
+                            <th>Type</th>
+                            <th>CRF Name</th>
+                            <th>Release Date</th>
+                            <th>Tech Lead</th>
+                            <th>Developer</th>
+                            <th>Tester TL</th>
+                            <th>Tester</th>
+                            <th>Status</th>
+                            <th>Tester Remarks</th>
+                            <th>TL Remarks</th>
+                            <th>Verified By</th>
+                            <th>Verified On</th>
+                            <th>Approved By</th>
+                            <th>Approved On</th>
+                            <th class="text-center">Attachment</th>
+                        </tr>
+                    </thead>
+                    <tbody id="crfListBody"></tbody>
+                </table>
+            </div>
+            <div class="text-center py-5 text-muted" id="crfEmpty" style="display:none;">
+                <i class="fas fa-check-circle fa-3x mb-3 opacity-50 text-success"></i>
+                <h5>No completed verifications found</h5>
+                <p>Try adjusting the date range or release type.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        const API_BASE = 'https://localhost:7118/api/Verification';
+        let completedData = [];
+
+        function formatDateForOracle(dateStr) {
+            if (!dateStr) return null;
+            const d = new Date(dateStr);
+            const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+            return `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`;
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.createElement("div");
+            toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3 shadow-lg`;
+            toast.style.zIndex = 9999;
+            toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body fw-medium">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>`;
+            document.body.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
+            bsToast.show();
+            setTimeout(() => toast.remove(), 6000);
+        }
+
+        document.getElementById('crfListFilterForm').addEventListener('submit', async e => {
+            e.preventDefault();
+
+            const from = document.getElementById('crfFromDate').value;
+            const to = document.getElementById('crfToDate').value;
+            const releaseType = document.getElementById('crfReleaseType').value;
+
+            if (!from || !to) {
+                showToast("Please select both From and To dates", "danger");
+                return;
+            }
+
+            if (new Date(from) > new Date(to)) {
+                showToast("From Date cannot be after To Date", "danger");
+                return;
+            }
+
+            const payload = {
+                fromDate: formatDateForOracle(from),
+                toDate: formatDateForOracle(to),
+                releaseType: releaseType || null
+            };
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Searching...';
+
+            try {
+                const res = await fetch(`${API_BASE}/completed`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (document.cookie.match(/jwtToken=([^;]+)/) || [])[1]
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(errorText || 'Server error');
+                }
+
+                completedData = await res.json();
+
+                renderCompletedTable();
+                document.getElementById('crfListCard').style.display = 'block';
+                document.getElementById('crfTotal').textContent = completedData.length;
+                document.getElementById('crfEmpty').style.display = completedData.length ? 'none' : 'block';
+
+                showToast(`Found ${completedData.length} completed verification(s)`,
+                    completedData.length > 0 ? "success" : "info");
+            } catch (err) {
+                console.error("Completed List Load error:", err);
+                showToast("Failed to load data: " + err.message, "danger");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search me-2"></i>Search';
+            }
+        });
+
+        function renderCompletedTable() {
+            const tbody = document.getElementById('crfListBody');
+            tbody.innerHTML = '';
+
+            if (completedData.length === 0) {
+                document.getElementById('crfEmpty').style.display = 'block';
+                return;
+            }
+            document.getElementById('crfEmpty').style.display = 'none';
+
+            completedData.forEach((item, index) => {
+                const safe = val => val?.toString().trim() || '-';
+                const isDaily = (item.releaseType || '').includes('Daily');
+                const badgeCls = isDaily ? "bg-primary" : "bg-warning text-dark";
+                const badgeText = isDaily ? "Daily" : "Exp.";
+
+                // Determine status badge color based on working status text
+                let statusBadge = 'bg-success';
+                if (item.workingStatusText && item.workingStatusText.toLowerCase().includes('not working')) {
+                    statusBadge = 'bg-danger';
+                } else if (item.workingStatusText && item.workingStatusText.toLowerCase().includes('progress')) {
+                    statusBadge = 'bg-warning';
+                }
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                        <td class="ps-3">
+                            <strong class="text-success">${safe(item.crfId)}</strong>
+                        </td>
+                        <td><span class="badge bg-secondary">${safe(item.requestId)}</span></td>
+                        <td><span class="badge ${badgeCls} fs-7">${badgeText}</span></td>
+                        <td class="text-wrap" style="max-width:250px;" title="${safe(item.crfName)}">
+                            ${item.crfName && item.crfName.length > 50 ? item.crfName.substring(0, 47) + '...' : safe(item.crfName)}
+                        </td>
+                        <td>${safe(item.releaseDate)}</td>
+                        <td><strong>${safe(item.techLead)}</strong></td>
+                        <td>${safe(item.developer)}</td>
+                        <td><strong>${safe(item.testerTl)}</strong></td>
+                        <td>${safe(item.tester)}</td>
+                        <td class="text-center">
+                            <span class="badge ${statusBadge} px-3 py-2">${safe(item.workingStatusText)}</span>
+                        </td>
+                        <td class="text-wrap small" style="max-width:300px;">
+                            ${safe(item.remarks).replace(/\n/g, '<br>')}
+                        </td>
+                        <td class="text-wrap small" style="max-width:300px;">
+                            <div class="alert alert-info mb-0 py-2 px-3 small">
+                                ${safe(item.tlRemarks).replace(/\n/g, '<br>')}
+                            </div>
+                        </td>
+                        <td><span class="badge bg-info">${safe(item.verifiedBy)}</span></td>
+                        <td><small>${safe(item.verifiedOn)}</small></td>
+                        <td><span class="badge bg-success">${safe(item.approvedBy)}</span></td>
+                        <td><small class="fw-bold text-success">${safe(item.approvedOn)}</small></td>
+                        <td class="text-center">
+                            ${item.attachmentName ?
+                        `<a href="${API_BASE}/Attachment/${encodeURIComponent(item.crfId)}/${encodeURIComponent(item.releaseDate)}"
+                                    target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-paperclip me-1"></i> View
+                                </a>` : '-'}
+                        </td>
+                    `;
+                tbody.appendChild(row);
+            });
+        }
+
+        document.getElementById('exportCompletedExcel')?.addEventListener('click', () => {
+            if (completedData.length === 0) {
+                showToast("No data to export", "info");
+                return;
+            }
+
+            const data = completedData.map(d => ({
+                "CRF ID": d.crfId,
+                "Request ID": d.requestId || "",
+                "Type": (d.releaseType || '').includes('Daily') ? 'Daily' : 'Exceptional',
+                "CRF Name": d.crfName,
+                "Release Date": d.releaseDate,
+                "Tech Lead": d.techLead,
+                "Developer": d.developer,
+                "Tester TL": d.testerTl,
+                "Tester": d.tester,
+                "Status": d.workingStatusText || "",
+                "Tester Remarks": (d.remarks || "").replace(/\n/g, " "),
+                "TL Remarks": (d.tlRemarks || "").replace(/\n/g, " "),
+                "Verified By": d.verifiedBy || "",
+                "Verified On": d.verifiedOn || "",
+                "Approved By": d.approvedBy || "",
+                "Approved On": d.approvedOn || ""
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Completed Verifications");
+
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 12 }, { wch: 15 }, { wch: 10 }, { wch: 50 },
+                { wch: 15 }, { wch: 20 }, { wch: 25 }, { wch: 20 },
+                { wch: 25 }, { wch: 20 }, { wch: 50 }, { wch: 50 },
+                { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 }
+            ];
+
+            XLSX.writeFile(wb, `Completed_Verifications_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            showToast("Excel file downloaded successfully!", "success");
+        });
+
+        // Set default dates (last 30 days)
+        window.addEventListener('DOMContentLoaded', () => {
+            const today = new Date();
+            const monthAgo = new Date(today);
+            monthAgo.setDate(monthAgo.getDate() - 30);
+
+            document.getElementById('crfToDate').valueAsDate = today;
+            document.getElementById('crfFromDate').valueAsDate = monthAgo;
+        });
+    </script>
+}

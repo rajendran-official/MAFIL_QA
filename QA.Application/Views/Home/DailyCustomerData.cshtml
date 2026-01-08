@@ -1,0 +1,92 @@
+﻿@model QA.Application.Models.DailyCustomerDataViewModel
+@{
+    ViewData["Title"] = "Daily Customer Data";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+
+<div class="content-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-users me-3"></i>Daily Customer Data (NCA Summary)
+        </h2>
+        <div class="text-muted fs-5">
+            Report for: <strong>@Model.ReportDate</strong>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Total Customers -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-primary">@Model.TotalCustomers</div>
+                    <p class="mb-0 text-muted fw-medium">Total Customers Created Today</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hyperverge -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-success">@Model.HypervergeCustomers</div>
+                    <p class="mb-0 text-muted fw-medium">Hyperverge Customers</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jukshio -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-info">@Model.JukshioCustomers</div>
+                    <p class="mb-0 text-muted fw-medium">Jukshio Customers</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Doorstep -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-warning">@Model.DoorstepCustomers</div>
+                    <p class="mb-0 text-muted fw-medium">Doorstep Customers</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aadhaar Count -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-primary">@Model.AadharCount</div>
+                    <p class="mb-0 text-muted fw-medium">Aadhaar Based</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- DigiLocker -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-success">@Model.DigiCount</div>
+                    <p class="mb-0 text-muted fw-medium">DigiLocker Customers</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Other ID -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="display-4 fw-bold text-secondary">@Model.OtherIdCount</div>
+                    <p class="mb-0 text-muted fw-medium">Other ID Based</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4 text-center text-muted small">
+        <i class="fas fa-sync-alt me-2"></i>Data auto-refreshed daily for current date
+    </div>
+</div>

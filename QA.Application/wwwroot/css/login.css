@@ -1,0 +1,145 @@
+﻿* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    height: 100vh;
+    display: flex;
+    justify-content: flex-end; /* Pushes container to the right */
+    align-items: center;
+    background: linear-gradient(135deg, #4a148c 0%, #7b1fa2 50%, #9c27b0 100%); /* Deep purple to vibrant purple */
+    overflow: hidden;
+    overscroll-behavior-x: none;
+    touch-action: pan-y pinch-zoom;
+}
+
+.login-container {
+    display: flex;
+    width: 800px;
+    max-width: 95%;
+    height: 520px;
+    margin-right: 8%;
+    background: rgba(255, 255, hecies 255, 255, 0.98);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+}
+
+.left-side {
+    flex: 1.1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    color: white;
+    background: linear-gradient(135deg, #6a1b9a, #ab47bc); /* Purple to lavender mix */
+}
+
+.logo-img {
+    width: 280px;
+    height: auto;
+    margin-bottom: 40px;
+}
+
+.left-side h1 {
+    font-size: 42px;
+    font-weight: 700;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.right-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 50px 45px;
+    background: white;
+    border-radius: 0 20px 20px 0;
+}
+
+    .right-side h2 {
+        font-size: 30px;
+        font-weight: 600;
+        color: #7b1fa2; /* Matching purple accent */
+        text-align: center;
+        margin-bottom: 40px;
+    }
+
+.form-group {
+    margin-bottom: 25px;
+}
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #555;
+        font-weight: 500;
+    }
+
+    .form-group input {
+        width: 100%;
+        padding: 15px 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        font-size: 16px;
+        transition: all 0.3s;
+        background: #f9f0ff; /* Subtle lavender tint */
+    }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #ce93d8; /* Lavender focus */
+            box-shadow: 0 0 0 5px rgba(206, 147, 216, 0.3);
+            background: white;
+        }
+
+.btn-login {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(to right, #9c27b0, #ce93d8); /* Purple to lavender gradient */
+    color: white;
+    border: none;
+    border-radius: 50px;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+    .btn-login:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 40px rgba(156, 39, 176, 0.4);
+    }
+
+#errorMessage {
+    text-align: center;
+    margin-top: 20px;
+    min-height: 60px;
+}
+
+@media (max-width: 768px) {
+    body {
+        justify-content: center;
+        background: linear-gradient(135deg, #4a148c 0%, #9c27b0 100%);
+    }
+
+    .login-container {
+        flex-direction: column;
+        height: auto;
+        margin-right: 0;
+        width: 90%;
+    }
+
+    .left-side {
+        padding: 50px 20px;
+    }
+
+    .right-side {
+        padding: 50px 30px;
+        border-radius: 0 0 20px 20px;
+    }
+}

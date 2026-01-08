@@ -1,0 +1,84 @@
+﻿@model QA.Application.Models.KYCDeviationViewModel
+@{
+    ViewData["Title"] = "KYC Deviation Report";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+
+<div class="content-container">
+    <h2 class="mb-4 text-primary fw-bold">
+        <i class="fas fa-exclamation-triangle me-3"></i>KYC Deviation Report
+    </h2>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white fw-bold">
+            <i class="fas fa-calendar me-2"></i>Select Date Range
+        </div>
+        <div class="card-body">
+            <form asp-action="KYCDeviationReport" method="post" class="row g-3 align-items-end">
+                @Html.AntiForgeryToken()
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">From Date <span class="text-danger">*</span></label>
+                    <input type="date" asp-for="FromDate" class="form-control form-control-lg" required />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">To Date <span class="text-danger">*</span></label>
+                    <input type="date" asp-for="ToDate" class="form-control form-control-lg" required />
+                </div>
+                <div class="col-md-4 text-end">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-search me-2"></i>Generate Report
+                    </button>
+                </div>
+            </form>
+
+            @if (TempData["ErrorMessage"] != null)
+            {
+                <div class="alert alert-danger mt-3">@TempData["ErrorMessage"]</div>
+            }
+        </div>
+    </div>
+
+    @if (Model.Results != null && Model.Results.Any())
+    {
+        <div class="card shadow">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-table me-2"></i>KYC Deviation Summary</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead class="bg-light text-dark fw-bold">
+                            <tr>
+                                <th class="text-center" style="width:80px;">S.No</th>
+                                <th>KYC Deviation</th>
+                                <th class="text-center" style="width:150px;">Count</th>
+                                <th>Status / Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Model.Results)
+                            {
+                                var rowClass = item.Count > 0 ? "table-warning" : "table-success";
+                                <tr class="@rowClass">
+                                    <td class="text-center fw-bold">@item.SNo</td>
+                                    <td>@item.KYCDeviation</td>
+                                    <td class="text-center fw-bold fs-4 @(item.Count > 0 ? "text-danger" : "text-success")">
+                                        @item.Count
+                                    </td>
+                                    <td>@item.Status</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else if (Model.FromDate.HasValue)
+    {
+        <div class="text-center py-5">
+            <i class="fas fa-check-circle fa-5x text-success mb-4"></i>
+            <h4 class="text-success">No KYC deviations found in the selected period.</h4>
+        </div>
+    }
+</div>

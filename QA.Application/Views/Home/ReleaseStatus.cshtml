@@ -1,0 +1,190 @@
+﻿@{
+    ViewData["Title"] = "Release Status";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+
+<div class="container-fluid mt-4">
+    <h3 class="mb-4">Release Status Report</h3>
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <form id="filterForm">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Release Type</label>
+                        <select class="form-select" id="releaseType">
+                            <option value="">All</option>
+                            <option value="Exceptional and Expedite Report">Exceptional and Expedite Report</option>
+                            <option value="Daily Release Report">Daily Release Report</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">From Date</label>
+                        <input type="date" class="form-control" id="fromDate" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">To Date</label>
+                        <input type="date" class="form-control" id="toDate" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Tester TL</label>
+                        <select class="form-select" id="testerTL">
+                            <option value="">All</option>
+                            @foreach (var item in ViewBag.TesterTLs as List<SelectListItem>)
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Tester Name</label>
+                        <select class="form-select" id="testerName">
+                            <option value="">All</option>
+                            @foreach (var item in ViewBag.TesterNames as List<SelectListItem>)
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Confirm</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results Grid -->
+    <div class="card shadow">
+        <div class="card-header d-flex justify-content-between">
+            <h5 class="mb-0">Release Details</h5>
+            <button id="exportExcel" class="btn btn-success btn-sm">Export to Excel</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-width: 100%; overflow-x: auto;">
+                <table class="table table-bordered table-striped mb-0" id="releaseTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>CRF_ID</th>
+                            <th>REQUEST_ID</th>
+                            <th>SUBJECT</th>
+                            <th>CURRENT_STATUS</th>
+                            <th>RELEASE_DATE</th>
+                            <th>TESTER</th>
+                            <th>TESTER_TL</th>
+                            <th>DEVELOPER</th>
+                            <th>TECHLEAD</th>
+                            <th>CONTACT_NUMBER</th>
+                            <th>UPDATED_BY</th>
+                            <th>CAB_ID</th>
+                            <th>CAB_DATE</th>
+                            <th>PARENT_APP</th>
+                            <th>CODE_REVIEWER</th>
+                            <th>REPOSITORY_NAME</th>
+                            <th>CHANGES_OBJECTS</th>
+                            <th>QA_RECOMMENDED_BY</th>
+                            <th>QA_RECOMMENDED_ON</th>
+                            <th>QA_REMARK</th>
+                            <th>RELEASE_STATUS</th>
+                            <th>RELEASE_TEAM_REMARK</th>
+                            <th>RELEASED_ON</th>
+                            <th>RELEASED_BY</th>
+                            <th>STATUS</th>
+                            <th>REMARKS</th>
+                            <th>DATE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- Data will be filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        document.getElementById("filterForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+
+            const filters = {
+                releaseType: document.getElementById("releaseType").value,
+                fromDate: document.getElementById("fromDate").value,
+                toDate: document.getElementById("toDate").value,
+                testerTL: document.getElementById("testerTL").value,
+                testerName: document.getElementById("testerName").value
+            };
+
+            const token = localStorage.getItem('jwtToken');
+            const response = await fetch('/api/ReleaseReport', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify(filters)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                renderTable(data);
+            } else {
+                alert("No data found or session expired");
+            }
+        });
+
+        function renderTable(data) {
+            const tbody = document.getElementById("tableBody");
+            tbody.innerHTML = "";
+
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="27" class="text-center">No records found</td></tr>`;
+                return;
+            }
+
+            data.forEach(row => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                            <td>${row.crfId || ''}</td>
+                            <td>${row.requestId || ''}</td>
+                            <td>${row.subject || ''}</td>
+                            <td>${row.currentStatus || ''}</td>
+                            <td>${row.releaseDate || ''}</td>
+                            <td>${row.tester || ''}</td>
+                            <td>${row.testerTl || ''}</td>
+                            <td>${row.developer || ''}</td>
+                            <td>${row.techLead || ''}</td>
+                            <td>${row.contactNumber || ''}</td>
+                            <td>${row.updatedBy || ''}</td>
+                            <td>${row.cabId || ''}</td>
+                            <td>${row.cabDate || ''}</td>
+                            <td>${row.parentApp || ''}</td>
+                            <td>${row.codeReviewer || ''}</td>
+                            <td>${row.repositoryName || ''}</td>
+                            <td>${row.changesObjects || ''}</td>
+                            <td>${row.qaRecommendedBy || ''}</td>
+                            <td>${row.qaRecommendedOn || ''}</td>
+                            <td>${row.qaRemark || ''}</td>
+                            <td>${row.releaseStatus || ''}</td>
+                            <td>${row.releaseTeamRemark || ''}</td>
+                            <td>${row.releasedOn || ''}</td>
+                            <td>${row.releasedBy || ''}</td>
+                            <td>${row.status || ''}</td>
+                            <td>${row.remarks || ''}</td>
+                            <td>${row.date || ''}</td>
+                        `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Export to Excel
+        document.getElementById("exportExcel").addEventListener("click", function () {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.table_to_sheet(document.getElementById("releaseTable"));
+            XLSX.utils.book_append_sheet(wb, ws, "Release Report");
+            XLSX.writeFile(wb, "Release_Status_Report_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+        });
+    </script>
+}

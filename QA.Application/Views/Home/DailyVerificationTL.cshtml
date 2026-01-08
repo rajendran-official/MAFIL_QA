@@ -1,0 +1,329 @@
+﻿@{
+    ViewData["Title"] = "Daily Verification - Tech Lead";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+
+<div class="container-fluid mt-4 px-2 px-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0 text-primary fw-bold">Daily Verification - Tech Lead</h3>
+        <span class="text-muted small">Review all tester verifications • Confirm or Return</span>
+    </div>
+
+    <div class="card shadow border-0 mb-4">
+        <div class="card-header bg-gradient bg-primary text-white">
+            <h6 class="mb-0">Search Filters</h6>
+        </div>
+        <div class="card-body">
+            <form id="tlFilterForm">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-4 col-md-6">
+                        <label class="form-label fw-semibold">From Date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="tlFromDate" required />
+                    </div>
+                    <div class="col-lg-4 col-md-6">
+                        <label class="form-label fw-semibold">To Date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="tlToDate" required />
+                    </div>
+                    <div class="col-lg-4 col-md-12">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow border-0" id="tlResultCard" style="display:none;">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Pending for TL Approval (<span id="tlPendingCount">0</span>)</h5>
+            <button class="btn btn-light btn-sm" id="tlExportExcel">
+                <i class="fas fa-file-excel me-1"></i> Export to Excel
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle text-nowrap" id="tlTable">
+                    <thead class="table-primary sticky-top">
+                        <tr>
+                            <th class="ps-3">CRF ID</th>
+                            <th>Request ID</th>
+                            <th>CRF Name</th>
+                            <th>Release Date</th>
+                            <th>Tech Lead</th>
+                            <th>Developer</th>
+                            <th>Tester</th>
+                            <th class="text-center">Status</th>
+                            <th>Tester Remarks</th>
+                            <th class="text-center">Attachment</th>
+                            <th>TL Remarks *</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tlBody"></tbody>
+                </table>
+            </div>
+            <div class="text-center py-5 text-muted" id="tlEmpty" style="display:none;">
+                <i class="fas fa-inbox fa-3x mb-3 opacity-50"></i>
+                <h5>No pending verifications found</h5>
+                <p>Try a different date range or all records may be approved.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        const API_BASE = 'https://localhost:7118/api/Verification';
+        let tlData = [];
+
+        function formatDateForOracle(dateStr) {
+            if (!dateStr) return null;
+            const d = new Date(dateStr);
+            const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+            return `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`.toUpperCase();
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.createElement("div");
+            toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
+            toast.style.zIndex = 9999;
+            toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>`;
+            document.body.appendChild(toast);
+            new bootstrap.Toast(toast).show();
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        document.getElementById('tlFilterForm').addEventListener('submit', async e => {
+            e.preventDefault();
+
+            const from = document.getElementById('tlFromDate').value;
+            const to = document.getElementById('tlToDate').value;
+
+            if (!from || !to) {
+                showToast("Please select both dates", "danger");
+                return;
+            }
+
+            if (new Date(from) > new Date(to)) {
+                showToast("From Date cannot be after To Date", "danger");
+                return;
+            }
+
+            const payload = {
+                fromDate: formatDateForOracle(from),
+                toDate: formatDateForOracle(to),
+                releaseType: null,
+                testerName: null
+            };
+
+            const btn = e.target.querySelector('button');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Searching...';
+
+            try {
+                const res = await fetch(`${API_BASE}/tlview`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (document.cookie.match(/jwtToken=([^;]+)/) || [])[1]
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) throw new Error(await res.text() || 'Server error');
+
+                tlData = await res.json();
+
+                renderTLTable();
+                document.getElementById('tlResultCard').style.display = 'block';
+                document.getElementById('tlEmpty').style.display = tlData.length ? 'none' : 'block';
+                document.getElementById('tlPendingCount').textContent = tlData.length;
+
+                if (tlData.length === 0) {
+                    showToast("No pending verifications found", "info");
+                }
+
+            } catch (err) {
+                showToast("Failed to load data: " + err.message, "danger");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search me-2"></i>Search';
+            }
+        });
+
+        async function tlAction(item, action) {
+            const remarksEl = document.querySelector(`textarea[data-verify-id="${item.verifyId}"]`);
+            const remarks = remarksEl.value.trim();
+
+            // Validate remarks for CONFIRM action
+            if (action === 'CONFIRM' && !remarks) {
+                remarksEl.classList.add('is-invalid');
+                showToast("TL Remarks are required to Confirm", "danger");
+                return;
+            }
+            remarksEl.classList.remove('is-invalid');
+
+            // Confirm for RETURN without remarks
+            if (action === 'RETURN' && !remarks && !confirm("Return without TL remarks?")) {
+                return;
+            }
+
+            const payload = [{
+                verifyId: item.verifyId,
+                crfId: item.crfId,
+                releaseDate: item.releaseDate,
+                action: action,
+                tlRemarks: remarks
+            }];
+
+            try {
+                const res = await fetch(`${API_BASE}/tlsave`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (document.cookie.match(/jwtToken=([^;]+)/) || [])[1]
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const successMsg = action === 'CONFIRM'
+                        ? `✓ CRF ${item.crfId} confirmed successfully! It will now appear in the Completed List.`
+                        : `↻ CRF ${item.crfId} returned to tester with remarks.`;
+
+                    showToast(successMsg, "success");
+
+                    // Refresh the list
+                    setTimeout(() => {
+                        document.getElementById('tlFilterForm').dispatchEvent(new Event('submit'));
+                    }, 1000);
+                } else {
+                    const errorText = await res.text();
+                    showToast("Action failed: " + errorText, "danger");
+                }
+            } catch (err) {
+                showToast("Network error: " + err.message, "danger");
+            }
+        }
+
+        function renderTLTable() {
+            const tbody = document.getElementById('tlBody');
+            tbody.innerHTML = '';
+
+            if (tlData.length === 0) {
+                document.getElementById('tlEmpty').style.display = 'block';
+                return;
+            }
+            document.getElementById('tlEmpty').style.display = 'none';
+
+            tlData.forEach((item, index) => {
+                const safe = val => val?.toString().trim() || '-';
+                const statusText = item.workingStatusText || 'Pending';
+                const badgeClass = item.workingStatus == 1 ? 'bg-success' :
+                    item.workingStatus == 2 ? 'bg-danger' : 'bg-warning';
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                        <td class="ps-3 fw-bold">
+                            <strong class="text-primary">${safe(item.crfId)}</strong>
+                        </td>
+                        <td><span class="badge bg-secondary">${safe(item.requestId)}</span></td>
+                        <td class="text-wrap" style="max-width:250px;" title="${safe(item.crfName)}">
+                            ${item.crfName && item.crfName.length > 50 ? item.crfName.substring(0, 47) + '...' : safe(item.crfName)}
+                        </td>
+                        <td>${safe(item.releaseDate)}</td>
+                        <td><strong>${safe(item.techLead)}</strong></td>
+                        <td>${safe(item.developer)}</td>
+                        <td><strong>${safe(item.tester)}</strong></td>
+                        <td class="text-center">
+                            <span class="badge ${badgeClass} px-3 py-2">${statusText}</span>
+                        </td>
+                        <td class="text-wrap small" style="max-width:300px;">
+                            ${safe(item.remarks).replace(/\n/g, '<br>')}
+                        </td>
+                        <td class="text-center">
+                            ${item.attachmentName ?
+                        `<a href="${API_BASE}/Attachment/${encodeURIComponent(item.crfId)}/${encodeURIComponent(item.releaseDate)}"
+                                    target="_blank" class="btn btn-sm btn-outline-info">
+                                    <i class="fas fa-paperclip"></i> View
+                                </a>` : '-'}
+                        </td>
+                        <td>
+                            <textarea class="form-control form-control-sm" rows="3"
+                                      placeholder="Enter TL remarks (required for Confirm)..."
+                                      data-verify-id="${item.verifyId}">${item.tlRemarks || ''}</textarea>
+                        </td>
+                        <td class="text-center align-middle">
+                            <div class="btn-group-vertical gap-2" role="group">
+                                <button type="button" class="btn btn-success btn-sm confirm-tl"
+                                        data-index="${index}" title="Confirm & Move to Completed List">
+                                    <i class="fas fa-check me-1"></i>Confirm
+                                </button>
+                                <button type="button" class="btn btn-warning btn-sm return-tl"
+                                        data-index="${index}" title="Return to Tester">
+                                    <i class="fas fa-undo me-1"></i>Return
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                tbody.appendChild(row);
+            });
+
+            // Attach event listeners
+            document.querySelectorAll('.confirm-tl').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.dataset.index);
+                    tlAction(tlData[index], 'CONFIRM');
+                });
+            });
+
+            document.querySelectorAll('.return-tl').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.dataset.index);
+                    tlAction(tlData[index], 'RETURN');
+                });
+            });
+        }
+
+        document.getElementById('tlExportExcel')?.addEventListener('click', () => {
+            if (tlData.length === 0) {
+                showToast("No data to export", "info");
+                return;
+            }
+            const data = tlData.map(d => ({
+                "CRF ID": d.crfId,
+                "Request ID": d.requestId || "",
+                "CRF Name": d.crfName,
+                "Release Date": d.releaseDate,
+                "Tech Lead": d.techLead,
+                "Developer": d.developer,
+                "Tester": d.tester,
+                "Status": d.workingStatusText || 'Pending',
+                "Tester Remarks": (d.remarks || "").replace(/\n/g, " "),
+                "TL Remarks": (d.tlRemarks || "").replace(/\n/g, " ")
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "TL_Pending");
+            XLSX.writeFile(wb, `TL_Pending_Verifications_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        });
+
+        // Set default dates
+        window.addEventListener('DOMContentLoaded', () => {
+            const today = new Date();
+            const weekAgo = new Date(today);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+
+            document.getElementById('tlToDate').valueAsDate = today;
+            document.getElementById('tlFromDate').valueAsDate = weekAgo;
+        });
+    </script>
+}
