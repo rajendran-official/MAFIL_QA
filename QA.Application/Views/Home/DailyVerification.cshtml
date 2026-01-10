@@ -119,431 +119,285 @@
 @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script>
-        const API_BASE = 'https://localhost:7118/api/Verification';
+        // ============================================================================
+        // DAILY VERIFICATION - FRONTEND JAVASCRIPT (TESTER VIEW)
+        // ============================================================================
 
-        const STATUS_OPTIONS = [
-            { value: 1, text: "Working" },
-            { value: 2, text: "Not Working" },
-            { value: 3, text: "In Progress" },
-            { value: 4, text: "User Feedback Pending" },
-            { value: 5, text: "Data Need to Capture" },
-            { value: 6, text: "Hold" }
+        const API_BASE = window.location.origin + '/api/DailyVerification';
+
+        // Status options matching your working_status column
+        const STATUS_OPTS = [
+            { v: "1", t: "Working" },
+            { v: "2", t: "Not Working" },
+            { v: "3", t: "In Progress" },
+            { v: "4", t: "Data Need" },
+            { v: "5", t: "User Feedback Pending" },
+            { v: "6", t: "Hold" }
         ];
 
-        const STATUS_MAP = {
-            0: "Pending",
-            1: "Working",
-            2: "Not Working",
-            3: "In Progress",
-            4: "User Feedback Pending",
-            5: "Data Need to Capture",
-            6: "Hold"
-        };
+        // Default dates: yesterday to today
+        window.addEventListener('DOMContentLoaded', () => {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            document.getElementById('toDate').valueAsDate = today;
+            document.getElementById('fromDate').valueAsDate = yesterday;
+        });
 
-        const VERIFY_STATUS_MAP = {
-            0: "Not Verified",
-            1: "Tester Verified",
-            2: "TL Approved",
-            3: "TL Returned",
-            4: "Updated on Return"
-        };
-
-        let verificationData = [];
-        let filteredData = [];
-        const pageSize = 10;
-        let currentPage = 1;
-
-        function formatDateForOracle(dateStr) {
-            if (!dateStr) return "";
-            const d = new Date(dateStr);
-            const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-            return `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`;
-        }
-
-        function showToast(message, type = "success") {
-            const toast = document.createElement("div");
-            toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
-            toast.style.zIndex = 9999;
-            toast.innerHTML = `
-                    <div class="d-flex">
-                        <div class="toast-body">${message}</div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-                    </div>`;
-            document.body.appendChild(toast);
-            new bootstrap.Toast(toast).show();
-            setTimeout(() => toast.remove(), 5000);
-        }
-
-        document.getElementById("filterForm").addEventListener("submit", async e => {
+        // Form submit - Load CRFs
+        document.getElementById('filterForm').addEventListener('submit', async e => {
             e.preventDefault();
 
-            const fromDateInput = document.getElementById("fromDate");
-            const toDateInput = document.getElementById("toDate");
-            const releaseTypeSelect = document.getElementById("releaseType");
+            const type = document.getElementById('releaseType').value || '0';
+            const from = document.getElementById('fromDate').value;
+            const to = document.getElementById('toDate').value;
 
-            let valid = true;
-            [fromDateInput, toDateInput, releaseTypeSelect].forEach(el => {
-                if (!el.value.trim()) {
-                    el.classList.add("is-invalid");
-                    valid = false;
-                } else {
-                    el.classList.remove("is-invalid");
-                }
-            });
-
-            if (new Date(fromDateInput.value) > new Date(toDateInput.value)) {
-                toDateInput.classList.add("is-invalid");
-                showToast("From Date cannot be greater than To Date", "danger");
+            if (!from || !to) {
+                alert('Please select both dates');
                 return;
             }
 
-            if (!valid) return;
+            // CRITICAL: Convert to DD-MM-YYYY format for Oracle
+            const fromOracle = formatDateForOracle(from);
+            const toOracle = formatDateForOracle(to);
 
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Searching...';
+            console.log('Sending:', { fromDate: fromOracle, toDate: toOracle, releaseType: type });
+
+            const btn = document.getElementById('loadBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
 
             try {
-                const url = new URL(`${API_BASE}/tester`);
-                url.searchParams.append('fromDate', formatDateForOracle(fromDateInput.value));
-                url.searchParams.append('toDate', formatDateForOracle(toDateInput.value));
-                if (releaseTypeSelect.value) {
-                    url.searchParams.append('releaseType', releaseTypeSelect.value);
-                }
+                const params = new URLSearchParams({
+                    fromDate: fromOracle,
+                    toDate: toOracle,
+                    releaseType: type
+                });
 
-                const res = await fetch(url, {
+                const res = await fetch(`${API_BASE}?${params}`, {
                     method: 'GET',
                     credentials: 'include',
                     headers: {
-                        'Authorization': 'Bearer ' + (document.cookie.match(/jwtToken=([^;]+)/) || [])[1]
+                        'Authorization': `Bearer ${getToken()}`,
+                        'Accept': 'application/json'
                     }
                 });
+
+                console.log('Response status:', res.status);
 
                 if (!res.ok) {
                     const errText = await res.text();
+                    console.error('Error response:', errText);
                     throw new Error(`Server error ${res.status}: ${errText}`);
                 }
 
-                const rawData = await res.json();
+                const data = await res.json();
+                console.log('Received data:', data);
 
-                if (!Array.isArray(rawData) || rawData.length === 0) {
-                    showToast("No records found for selected filters.", "info");
-                    verificationData = filteredData = [];
-                    document.getElementById("resultCard").style.display = "none";
-                    document.getElementById("emptyState").style.display = "block";
-                    return;
-                }
-
-                verificationData = rawData.map(item => ({
-                    crfId: item.crfId || "N/A",
-                    requestId: item.requestId || "",
-                    crfName: item.crfName || "Unknown CRF",
-                    releaseDate: item.releaseDate || "",
-                    releaseType: item.releaseType || "",
-                    techLeadName: item.techLeadName || "Not Assigned",
-                    developerName: item.developerName || "Not Assigned",
-                    testerTlName: item.testerTlName || "Not Assigned",
-                    testerName: item.testerName || "Not Assigned",
-                    workingStatus: item.workingStatus || 0,
-                    remarks: item.remarks || "",
-                    tlRemarks: item.tlRemarks || "",
-                    attachmentName: item.attachmentName || "",
-                    verifiedBy: item.verifiedBy || "",
-                    verifiedOn: item.verifiedOn || "",
-                    verifyStatus: item.verifyStatus || 0,
-                    isConfirmed: item.verifyStatus === 2,
-                    isReturned: item.verifyStatus === 3,
-                    isEditable: [0, 1, 3, 4].includes(item.verifyStatus)
-                }));
-
-                filteredData = [...verificationData];
-                currentPage = 1;
-                updateTableAndPagination();
-                document.getElementById("resultCard").style.display = "block";
-                document.getElementById("emptyState").style.display = "none";
-
+                renderTable(data);
+                document.getElementById('resultCard').style.display = 'block';
+                document.getElementById('totalCount').textContent = data.length;
             } catch (err) {
-                console.error("Search error:", err);
-                showToast("Failed to load data: " + err.message, "danger");
+                console.error('Fetch failed:', err);
+                alert('Failed to load data: ' + err.message);
             } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-search me-2"></i>Search';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search me-2"></i> Load';
             }
         });
 
-        function updateTableAndPagination() {
-            document.getElementById("totalRecords").textContent = filteredData.length;
-            const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
-            document.getElementById("totalPages").textContent = totalPages;
-            document.getElementById("currentPage").textContent = currentPage;
-            document.getElementById("prevPage").parentElement.classList.toggle("disabled", currentPage === 1);
-            document.getElementById("nextPage").parentElement.classList.toggle("disabled", currentPage === totalPages);
-            renderTable();
+        // Convert input date (YYYY-MM-DD) to Oracle format (DD-MM-YYYY)
+        function formatDateForOracle(dateStr) {
+            if (!dateStr) return '';
+            const [year, month, day] = dateStr.split('-');
+            return `${day}-${month}-${year}`;
         }
 
-        function renderTable() {
-            const tbody = document.getElementById("verificationBody");
-            tbody.innerHTML = "";
-            const start = (currentPage - 1) * pageSize;
-            const end = start + pageSize;
-            const pageData = filteredData.slice(start, end);
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
 
-            if (filteredData.length === 0) {
-                document.getElementById("emptyState").style.display = "block";
-                return;
-            }
-            document.getElementById("emptyState").style.display = "none";
-
-            pageData.forEach((item, idx) => {
-                const globalIdx = filteredData.indexOf(item);
-                const isDaily = item.releaseType.includes("Daily");
-                const badgeCls = isDaily ? "bg-primary" : "bg-warning text-dark";
-                const badgeText = isDaily ? "Daily" : "Exp.";
-                const canConfirm = item.workingStatus > 0 && (item.remarks || "").trim().length > 0;
-                const statusBadge = VERIFY_STATUS_MAP[item.verifyStatus] || "Unknown";
-                const statusColor = item.verifyStatus === 2 ? "success" :
-                    item.verifyStatus === 3 ? "warning" : "secondary";
-
-                const row = document.createElement("tr");
-                row.innerHTML = `
-                        <td class="ps-4">
-                            <strong class="text-primary">${item.crfId}</strong>
-                            <br><small class="badge bg-${statusColor}">${statusBadge}</small>
-                        </td>
-                        <td><span class="badge bg-secondary fs-7">${item.requestId || 'N/A'}</span></td>
-                        <td><span class="badge ${badgeCls} fs-7">${badgeText}</span></td>
-                        <td class="text-wrap" title="${item.crfName}">
-                            ${item.crfName.length > 50 ? item.crfName.substring(0, 47) + '...' : item.crfName}
-                        </td>
-                        <td>${item.releaseDate}</td>
-                        <td><strong>${item.techLeadName}</strong></td>
-                        <td>${item.developerName}</td>
-                        <td><strong>${item.testerTlName}</strong></td>
-                        <td>${item.testerName}</td>
-                        <td class="text-center align-middle">
-                            ${item.isConfirmed || !item.isEditable
-                        ? `<span class="badge bg-success px-3 py-2">${STATUS_MAP[item.workingStatus]}</span>`
-                        : `<select class="form-select form-select-sm status-select" data-idx="${globalIdx}">
-                                      <option value="0">-- Select --</option>
-                                      ${STATUS_OPTIONS.map(opt =>
-                            `<option value="${opt.value}" ${item.workingStatus === opt.value ? 'selected' : ''}>${opt.text}</option>`
-                        ).join('')}
-                                   </select>`
-                    }
-                        </td>
-                        <td class="align-middle">
-                            ${item.tlRemarks ? `
-                                <div class="alert alert-warning small py-2 mb-2 border-start border-warning border-4" role="alert">
-                                    <strong class="d-block mb-1">
-                                        <i class="fas fa-exclamation-triangle me-1"></i> TL Remarks:
-                                    </strong>
-                                    <div class="ms-2">${item.tlRemarks.replace(/\n/g, '<br>')}</div>
-                                </div>
-                            ` : ''}
-                            <textarea class="form-control form-control-sm remarks-text w-100" rows="3" data-idx="${globalIdx}"
-                                ${!item.isEditable ? 'readonly' : ''}
-                                placeholder="${item.isEditable ? 'Enter your remarks here...' : ''}">${item.remarks || ''}</textarea>
-                            ${item.tlRemarks && item.isEditable ? `
-                                <small class="text-danger d-block mt-1">
-                                    <i class="fas fa-info-circle me-1"></i> Please address TL remarks and resubmit.
-                                </small>
-                            ` : ''}
-                            <small class="text-muted d-block mt-1 word-count" data-idx="${globalIdx}">
-                                ${(item.remarks || '').trim().split(/\s+/).filter(w => w.length > 0).length} words
-                            </small>
-                        </td>
-                        <td class="align-middle text-center">
-                            ${item.isEditable && !item.isConfirmed
-                        ? `<input type="file" class="form-control form-control-sm file-input" data-idx="${globalIdx}"
-                                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">`
-                        : (item.attachmentName
-                            ? `<a href="${API_BASE}/Attachment/${encodeURIComponent(item.crfId)}/${encodeURIComponent(item.releaseDate)}"
-                                          target="_blank" class="btn btn-sm btn-outline-primary">
-                                          <i class="fas fa-paperclip me-1"></i> ${item.attachmentName}
-                                       </a>`
-                            : '<span class="text-muted">-</span>')
-                    }
-                        </td>
-                        <td class="text-center align-middle">
-                            ${item.isEditable && !item.isConfirmed
-                        ? `<button class="btn ${canConfirm ? 'btn-primary' : 'btn-secondary'} btn-sm px-3 confirm-btn"
-                                           data-idx="${globalIdx}" ${!canConfirm ? 'disabled' : ''}>
-                                       <i class="fas fa-check me-1"></i>Confirm
-                                   </button>`
-                        : `<button class="btn btn-success btn-sm px-3" disabled>
-                                       <i class="fas fa-check-circle me-1"></i>Confirmed
-                                   </button>`
-                    }
-                        </td>
-                    `;
-                tbody.appendChild(row);
-            });
-
-            attachEvents();
-        }
-
-        function attachEvents() {
-            document.querySelectorAll(".status-select").forEach(sel => {
-                sel.addEventListener("change", e => {
-                    const idx = e.target.dataset.idx;
-                    verificationData[idx].workingStatus = parseInt(e.target.value);
-                    updateConfirmButton(idx);
-                });
-            });
-
-            document.querySelectorAll(".remarks-text").forEach(ta => {
-                ta.addEventListener("input", e => {
-                    const idx = e.target.dataset.idx;
-                    verificationData[idx].remarks = e.target.value;
-                    const words = e.target.value.trim().split(/\s+/).filter(w => w.length > 0).length;
-                    const wordCountEl = ta.parentElement.querySelector(".word-count");
-                    if (wordCountEl) wordCountEl.textContent = words + " words";
-                    updateConfirmButton(idx);
-                });
-            });
-
-            document.querySelectorAll(".confirm-btn").forEach(btn => {
-                btn.addEventListener("click", e => {
-                    const idx = e.target.dataset.idx;
-                    saveItem(verificationData[idx]);
-                });
-            });
-        }
-
-        function updateConfirmButton(idx) {
-            const item = verificationData[idx];
-            const canConfirm = item.workingStatus > 0 && (item.remarks || "").trim().length > 0;
-            const btn = document.querySelector(`.confirm-btn[data-idx="${idx}"]`);
-            if (btn) {
-                btn.disabled = !canConfirm;
-                btn.className = `btn btn-sm px-3 confirm-btn ${canConfirm ? 'btn-primary' : 'btn-secondary'}`;
-            }
-        }
-
-        async function saveItem(item) {
-            if (!item.workingStatus || item.workingStatus === 0) {
-                showToast("Please select a Status", "danger");
-                return;
-            }
-            if (!item.remarks?.trim()) {
-                showToast("Remarks are mandatory", "danger");
+            if (!data || data.length === 0) {
+                document.getElementById('noData').classList.remove('d-none');
                 return;
             }
 
-            const fileInput = document.querySelector(`.file-input[data-idx="${verificationData.indexOf(item)}"]`);
-            const file = fileInput?.files[0];
-            let attachmentBase64 = null, attachmentName = null, attachmentMime = null;
+            document.getElementById('noData').classList.add('d-none');
 
-            if (file) {
-                attachmentBase64 = await fileToBase64(file);
-                attachmentName = file.name;
-                attachmentMime = file.type;
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="fw-bold text-primary">${item.CRF_ID || '-'}</td>
+                    <td>${item.REQUEST_ID || '-'}</td>
+                    <td class="text-wrap" title="${item.SUBJECT || ''}">
+                        ${item.SUBJECT?.substring(0, 60) || 'N/A'}${item.SUBJECT?.length > 60 ? '...' : ''}
+                    </td>
+                    <td>${item.RELEASE_DATE || '-'}</td>
+                    <td>${item.TECHLEAD_NAME || '-'}</td>
+                    <td>${item.DEVELOPER_NAMES || '-'}</td>
+                    <td>${item.TESTER_TL_NAME || '-'}</td>
+                    <td>${item.TESTER_NAMES || '-'}</td>
+                    <td>
+                        <select class="form-select form-select-sm status-select" required>
+                            <option value="">-- Select --</option>
+                            ${STATUS_OPTS.map(o => `<option value="${o.v}">${o.t}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td>
+                        <textarea class="form-control form-control-sm remarks" rows="2"
+                                  placeholder="Enter remarks..." required></textarea>
+                    </td>
+                    <td>
+                        <input type="file" class="form-control form-control-sm file-input"
+                               accept=".pdf,.jpg,.jpeg,.png,.docx"/>
+                    </td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-success save-btn mb-1">
+                            <i class="fas fa-save me-1"></i>Submit
+                        </button>
+                        <button class="btn btn-sm btn-info history-btn">
+                            <i class="fas fa-history me-1"></i>History
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                // Bind events
+                tr.querySelector('.save-btn').onclick = () => saveItem(item, tr);
+                tr.querySelector('.history-btn').onclick = () => loadHistory(item.CRF_ID, item.REQUEST_ID || '0');
+            });
+        }
+
+        async function saveItem(item, row) {
+            const status = row.querySelector('.status-select').value;
+            const remarks = row.querySelector('.remarks').value.trim();
+            const fileInput = row.querySelector('.file-input');
+
+            // Validation
+            if (!status) {
+                alert('Please select working status');
+                return;
+            }
+            if (!remarks) {
+                alert('Remarks are required');
+                return;
             }
 
-            const payload = [{
-                crfId: item.crfId,
-                requestId: item.requestId || null,
-                workingStatus: parseInt(item.workingStatus),
-                remarks: item.remarks.trim(),
-                attachmentName: attachmentName || item.attachmentName || null,
-                attachmentBase64: attachmentBase64,
-                attachmentMime: attachmentMime
-            }];
+            // Confirm submission
+            if (!confirm(`Submit verification for CRF ${item.CRF_ID}?`)) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('crfId', item.CRF_ID || '0');
+            formData.append('requestId', item.REQUEST_ID || '0');
+            formData.append('workingStatus', status);
+            formData.append('remarks', remarks);
+
+            if (fileInput.files[0]) {
+                formData.append('attachment', fileInput.files[0]);
+            }
+
+            const saveBtn = row.querySelector('.save-btn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
             try {
-                const res = await fetch(`${API_BASE}/testersave`, {
+                const res = await fetch(API_BASE, {
                     method: 'POST',
+                    body: formData,
                     credentials: 'include',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + (document.cookie.match(/jwtToken=([^;]+)/) || [])[1]
-                    },
-                    body: JSON.stringify(payload)
+                        'Authorization': `Bearer ${getToken()}`
+                    }
                 });
 
                 if (res.ok) {
-                    showToast("✓ Verification saved successfully!", "success");
-                    document.getElementById("filterForm").dispatchEvent(new Event('submit'));
+                    alert('✅ Verification submitted successfully!');
+                    // Refresh the list
+                    document.getElementById('filterForm').dispatchEvent(new Event('submit'));
                 } else {
-                    const error = await res.json();
-                    showToast("Save failed: " + (error.error || error.details), "danger");
+                    const err = await res.text();
+                    alert('❌ Save failed: ' + err);
                 }
             } catch (err) {
-                showToast("Error: " + err.message, "danger");
+                alert('❌ Error: ' + err.message);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Submit';
             }
         }
 
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
+        async function loadHistory(crfId, reqId) {
+            try {
+                const res = await fetch(
+                    `${API_BASE}/history?crfId=${encodeURIComponent(crfId)}&requestId=${encodeURIComponent(reqId)}`,
+                    {
+                        credentials: 'include',
+                        headers: {
+                            'Authorization': `Bearer ${getToken()}`,
+                            'Accept': 'application/json'
+                        }
+                    }
+                );
+
+                if (!res.ok) throw new Error(await res.text());
+
+                const data = await res.json();
+                const tbody = document.querySelector('#historyTable tbody');
+
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No history found</td></tr>';
+                } else {
+                    tbody.innerHTML = data.map(h => `
+                        <tr>
+                            <td>${h.UPDATED_DATE || h.updated_date || '-'}</td>
+                            <td>
+                                <span class="badge ${getStatusBadge(h.WORKING_STATUS || h.working_status)}">
+                                    ${getStatusText(h.WORKING_STATUS || h.working_status)}
+                                </span>
+                            </td>
+                            <td>${h.REMARKS || h.remarks || '-'}</td>
+                            <td>${h.UPDATED_BY_NAME || h.updated_by_name || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+
+                new bootstrap.Modal(document.getElementById('historyModal')).show();
+            } catch (err) {
+                alert('Failed to load history: ' + err.message);
+            }
         }
 
-        document.getElementById("prevPage").addEventListener("click", e => {
-            e.preventDefault();
-            if (currentPage > 1) {
-                currentPage--;
-                updateTableAndPagination();
-            }
+        function getStatusText(status) {
+            const opt = STATUS_OPTS.find(o => o.v == status);
+            return opt ? opt.t : 'Unknown';
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                '1': 'bg-success',
+                '2': 'bg-danger',
+                '3': 'bg-warning',
+                '4': 'bg-info',
+                '5': 'bg-secondary',
+                '6': 'bg-dark'
+            };
+            return badges[status] || 'bg-secondary';
+        }
+
+        function getToken() {
+            const match = document.cookie.match(/jwtToken=([^;]+)/);
+            return match ? match[1] : '';
+        }
+
+        // Export to Excel
+        document.getElementById('exportBtn')?.addEventListener('click', () => {
+            const table = document.getElementById('verificationTable');
+            const wb = XLSX.utils.table_to_book(table, { sheet: "Verifications" });
+            XLSX.writeFile(wb, `QA_Verifications_${new Date().toISOString().split('T')[0]}.xlsx`);
         });
 
-        document.getElementById("nextPage").addEventListener("click", e => {
-            e.preventDefault();
-            if (currentPage < Math.ceil(filteredData.length / pageSize)) {
-                currentPage++;
-                updateTableAndPagination();
-            }
-        });
-
-        document.getElementById("tableSearch").addEventListener("input", e => {
-            const query = e.target.value.toLowerCase();
-            filteredData = verificationData.filter(item =>
-                item.crfId.toLowerCase().includes(query) ||
-                item.crfName.toLowerCase().includes(query)
-            );
-            currentPage = 1;
-            updateTableAndPagination();
-        });
-
-        document.getElementById("exportExcelBtn").addEventListener("click", () => {
-            if (filteredData.length === 0) {
-                alert("No data to export!");
-                return;
-            }
-
-            const dataToExport = filteredData.map(item => ({
-                "CRF ID": item.crfId,
-                "Request ID": item.requestId || "N/A",
-                "Type": item.releaseType.includes("Daily") ? "Daily" : "Exp.",
-                "CRF Name": item.crfName,
-                "Release Date": item.releaseDate,
-                "Tech Lead": item.techLeadName,
-                "Developer": item.developerName,
-                "Tester TL": item.testerTlName,
-                "Tester": item.testerName,
-                "Status": STATUS_MAP[item.workingStatus] || "Pending",
-                "Remarks": (item.remarks || "").replace(/\n/g, " "),
-                "Verified Status": VERIFY_STATUS_MAP[item.verifyStatus],
-                "Verified By": item.verifiedBy || "-",
-                "Verified On": item.verifiedOn || "-"
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(dataToExport);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Verification Data");
-
-            ws['!cols'] = [
-                { wch: 12 }, { wch: 15 }, { wch: 8 }, { wch: 50 },
-                { wch: 15 }, { wch: 20 }, { wch: 25 }, { wch: 20 },
-                { wch: 25 }, { wch: 20 }, { wch: 50 }, { wch: 20 },
-                { wch: 20 }, { wch: 20 }
-            ];
-
-            XLSX.writeFile(wb, `Daily_Release_Verification_${new Date().toISOString().slice(0, 10)}.xlsx`);
-        });
 
         window.addEventListener('DOMContentLoaded', () => {
             const today = new Date();

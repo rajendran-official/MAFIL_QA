@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Oracle.ManagedDataAccess.Client;
+using Oracle.ManagedDataAccess.Types;
 using System.Data;
 using System.Security.Claims;
-using Newtonsoft.Json;
 
 namespace QA.API.Controllers
 {
@@ -23,232 +23,320 @@ namespace QA.API.Controllers
             _logger = logger;
         }
 
-        // GET: api/DailyVerification
+        // GET: api/DailyVerification?fromDate=09-01-2026&toDate=10-01-2026&releaseType=1
         [HttpGet]
         public async Task<IActionResult> GetVerifications(
             [FromQuery] string fromDate,
             [FromQuery] string toDate,
-            [FromQuery] string? releaseType = null,
-            [FromQuery] string? testerName = null)
+            [FromQuery] string? releaseType = "0")
         {
-            var currentUser = GetCurrentUserName();
-            if (currentUser == "Unknown User")
-                return Unauthorized("User not identified");
-
-            var list = new List<object>();
-
             try
             {
+                _logger.LogInformation("=== API CALLED ===");
+                _logger.LogInformation("FromDate: {FromDate}, ToDate: {ToDate}, ReleaseType: {ReleaseType}",
+                    fromDate, toDate, releaseType);
+
+                if (string.IsNullOrEmpty(fromDate) || string.IsNullOrEmpty(toDate))
+                {
+                    return BadRequest(new { error = "fromDate and toDate are required" });
+                }
+
                 using var conn = new OracleConnection(_connStr);
                 await conn.OpenAsync();
+                _logger.LogInformation("Database connected");
 
-                using var cmd = new OracleCommand("PROC_DAILY_VERIFICATION_MASTER", conn)
+                using var cmd = new OracleCommand("proc_qa_release_mst", conn)
                 {
                     CommandType = CommandType.StoredProcedure
                 };
 
-                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = "FETCH";
-                cmd.Parameters.Add("p_from_date", OracleDbType.Varchar2).Value = fromDate ?? (object)DBNull.Value;
-                cmd.Parameters.Add("p_to_date", OracleDbType.Varchar2).Value = toDate ?? (object)DBNull.Value;
-                cmd.Parameters.Add("p_release_type", OracleDbType.Varchar2).Value = releaseType ?? (object)DBNull.Value;
-                cmd.Parameters.Add("p_tester_tl", OracleDbType.Varchar2).Value = DBNull.Value;
-                cmd.Parameters.Add("p_tester_name", OracleDbType.Varchar2).Value =
-                    string.IsNullOrEmpty(testerName) ? currentUser : testerName;
-                cmd.Parameters.Add("p_json_input", OracleDbType.Clob).Value = DBNull.Value;
-                cmd.Parameters.Add("p_updated_by", OracleDbType.Varchar2).Value = DBNull.Value;
-                cmd.Parameters.Add("p_result", OracleDbType.RefCursor).Direction = ParameterDirection.Output;
+                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_pageval", OracleDbType.Varchar2).Value = "crf load";
+                cmd.Parameters.Add("p_parval1", OracleDbType.Varchar2).Value = fromDate;
+                cmd.Parameters.Add("p_parval2", OracleDbType.Varchar2).Value = toDate;
+                cmd.Parameters.Add("p_parval3", OracleDbType.Varchar2).Value = releaseType ?? "0";
 
-                using var rdr = await cmd.ExecuteReaderAsync();
-
-                while (await rdr.ReadAsync())
+                var cursorParam = new OracleParameter("qry_result", OracleDbType.RefCursor)
                 {
-                    list.Add(new
+                    Direction = ParameterDirection.Output
+                };
+                cmd.Parameters.Add(cursorParam);
+
+                await cmd.ExecuteNonQueryAsync();
+                _logger.LogInformation("Stored procedure executed");
+
+                var list = new List<Dictionary<string, object>>();
+
+                if (cursorParam.Value == null || cursorParam.Value == DBNull.Value)
+                {
+                    _logger.LogWarning("RefCursor is null");
+                    return Ok(new List<object>());
+                }
+
+                var refCursor = (OracleRefCursor)cursorParam.Value;
+                using (var reader = refCursor.GetDataReader())
+                {
+                    _logger.LogInformation("Reading data, FieldCount: {Count}", reader.FieldCount);
+
+                    while (await reader.ReadAsync())
                     {
-                        crfId = rdr["CRF_ID"]?.ToString() ?? "",
-                        requestId = rdr["REQUEST_ID"]?.ToString() ?? "",
-                        crfName = rdr["CRF_NAME"]?.ToString() ?? "",
-                        releaseDate = rdr["RELEASE_DATE"]?.ToString() ?? "",
-                        releaseType = rdr["RELEASE_TYPE"]?.ToString() ?? "",
-                        techLeadName = rdr["TECHLEAD_NAME"]?.ToString() ?? "",
-                        developerName = rdr["DEVELOPER_NAME"]?.ToString() ?? "",
-                        testerTlName = rdr["TESTER_TL_NAME"]?.ToString() ?? "",
-                        testerName = rdr["TESTER_NAME"]?.ToString() ?? "",
-                        workingStatus = rdr["WORKING_STATUS"] != DBNull.Value ? Convert.ToInt32(rdr["WORKING_STATUS"]) : 0,
-                        remarks = rdr["REMARKS"]?.ToString() ?? "",
-                        tlRemarks = rdr["TL_REMARKS"]?.ToString() ?? "",
-                        attachmentName = rdr["ATTACHMENT_NAME"]?.ToString() ?? "",
-                        verifiedBy = rdr["VERIFIED_BY"]?.ToString() ?? "",
-                        verifiedOn = rdr["VERIFIED_ON"]?.ToString() ?? "",
-                        verifyStatus = rdr["VERIFY_STATUS"] != DBNull.Value ? Convert.ToInt32(rdr["VERIFY_STATUS"]) : 0
-                    });
+                        var row = new Dictionary<string, object>();
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            string colName = reader.GetName(i);
+                            object value = reader.IsDBNull(i) ? null! : reader.GetValue(i);
+                            row[colName] = value!;
+                        }
+                        list.Add(row);
+                    }
+                }
+
+                _logger.LogInformation("Retrieved {Count} records", list.Count);
+                return Ok(list);
+            }
+            catch (OracleException oex)
+            {
+                _logger.LogError(oex, "Oracle error: {Message}, Code: {Code}", oex.Message, oex.Number);
+                return StatusCode(500, new
+                {
+                    error = "Database error",
+                    code = oex.Number,
+                    message = oex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error: {Message}", ex.Message);
+                return StatusCode(500, new
+                {
+                    error = "Internal error",
+                    message = ex.Message
+                });
+            }
+        }
+
+        // POST: api/DailyVerification
+        [HttpPost]
+        public async Task<IActionResult> CreateVerification([FromForm] VerificationSubmitModel model)
+        {
+            try
+            {
+                var empCode = User.FindFirst("emp_code")?.Value
+                    ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("EmployeeCode")?.Value
+                    ?? "0";
+
+                _logger.LogInformation("Tester {EmpCode} submitting verification for CRF {CrfId}",
+                    empCode, model.CrfId);
+
+                string? attachmentPath = null;
+                if (model.Attachment != null && model.Attachment.Length > 0)
+                {
+                    var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "qa_verifications");
+                    Directory.CreateDirectory(uploadsFolder);
+
+                    var fileName = $"{model.CrfId}_{model.RequestId}_{DateTime.Now:yyyyMMddHHmmss}_{model.Attachment.FileName}";
+                    attachmentPath = Path.Combine(uploadsFolder, fileName);
+
+                    using var stream = new FileStream(attachmentPath, FileMode.Create);
+                    await model.Attachment.CopyToAsync(stream);
+                }
+
+                using var conn = new OracleConnection(_connStr);
+                await conn.OpenAsync();
+
+                using var cmd = new OracleCommand("proc_qa_release_mst", conn)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                var paramString = $"{model.CrfId}~{model.RequestId}~{model.WorkingStatus}~{model.Remarks}";
+
+                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_pageval", OracleDbType.Varchar2).Value = "insert";
+                cmd.Parameters.Add("p_parval1", OracleDbType.Varchar2).Value = paramString;
+                cmd.Parameters.Add("p_parval2", OracleDbType.Varchar2).Value = empCode;
+                cmd.Parameters.Add("p_parval3", OracleDbType.Varchar2).Value = DBNull.Value;
+
+                var cursorParam = new OracleParameter("qry_result", OracleDbType.RefCursor)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                cmd.Parameters.Add(cursorParam);
+
+                await cmd.ExecuteNonQueryAsync();
+
+                if (!string.IsNullOrEmpty(attachmentPath))
+                {
+                    await SaveAttachmentPath(conn, model.CrfId, model.RequestId, attachmentPath);
+                }
+
+                return Ok(new { success = true, message = "Verification submitted successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating verification");
+                return StatusCode(500, new { error = "Internal error", message = ex.Message });
+            }
+        }
+
+        // PUT: api/DailyVerification
+        [HttpPut]
+        public async Task<IActionResult> UpdateVerification([FromBody] TLVerificationModel model)
+        {
+            try
+            {
+                var empCode = User.FindFirst("emp_code")?.Value
+                    ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                    ?? "0";
+
+                _logger.LogInformation("TL {EmpCode} updating verification for CRF {CrfId}",
+                    empCode, model.CrfId);
+
+                using var conn = new OracleConnection(_connStr);
+                await conn.OpenAsync();
+
+                using var cmd = new OracleCommand("proc_qa_release_mst", conn)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                var paramString = $"{model.CrfId}~{model.RequestId}~{model.WorkingStatus}~{model.Remarks}~{model.StatusId}~{empCode}";
+
+                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_pageval", OracleDbType.Varchar2).Value = "update";
+                cmd.Parameters.Add("p_parval1", OracleDbType.Varchar2).Value = paramString;
+                cmd.Parameters.Add("p_parval2", OracleDbType.Varchar2).Value = empCode;
+                cmd.Parameters.Add("p_parval3", OracleDbType.Varchar2).Value = DBNull.Value;
+
+                var cursorParam = new OracleParameter("qry_result", OracleDbType.RefCursor)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                cmd.Parameters.Add(cursorParam);
+
+                await cmd.ExecuteNonQueryAsync();
+
+                if (model.StatusId == 2)
+                {
+                    await UpdateReleaseStatus(conn, model.CrfId, model.RequestId, 16);
+                }
+                else if (model.StatusId == 3)
+                {
+                    await UpdateReleaseStatus(conn, model.CrfId, model.RequestId, 4);
+                }
+
+                return Ok(new { success = true, message = "Verification updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating verification");
+                return StatusCode(500, new { error = "Internal error", message = ex.Message });
+            }
+        }
+
+        // GET: api/DailyVerification/history?crfId=123&requestId=456
+        [HttpGet("history")]
+        public async Task<IActionResult> GetHistory(
+            [FromQuery] string crfId,
+            [FromQuery] string requestId)
+        {
+            try
+            {
+                _logger.LogInformation("Getting history for CRF {CrfId}, Req {RequestId}", crfId, requestId);
+
+                using var conn = new OracleConnection(_connStr);
+                await conn.OpenAsync();
+
+                using var cmd = new OracleCommand("proc_qa_release_mst", conn)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_pageval", OracleDbType.Varchar2).Value = "history";
+                cmd.Parameters.Add("p_parval1", OracleDbType.Varchar2).Value = crfId;
+                cmd.Parameters.Add("p_parval2", OracleDbType.Varchar2).Value = requestId;
+                cmd.Parameters.Add("p_parval3", OracleDbType.Varchar2).Value = DBNull.Value;
+
+                var cursorParam = new OracleParameter("qry_result", OracleDbType.RefCursor)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                cmd.Parameters.Add(cursorParam);
+
+                await cmd.ExecuteNonQueryAsync();
+
+                var list = new List<Dictionary<string, object>>();
+                var refCursor = (OracleRefCursor)cursorParam.Value;
+                using (var reader = refCursor.GetDataReader())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var row = new Dictionary<string, object>();
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            string colName = reader.GetName(i);
+                            object value = reader.IsDBNull(i) ? null! : reader.GetValue(i);
+                            row[colName] = value!;
+                        }
+                        list.Add(row);
+                    }
                 }
 
                 return Ok(list);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching verifications");
-                return StatusCode(500, new { error = "Failed to load data", details = ex.Message });
+                _logger.LogError(ex, "Error getting history");
+                return StatusCode(500, new { error = "Internal error", message = ex.Message });
             }
         }
 
-        // POST: api/DailyVerification/Save
-        [HttpPost("Save")]
-        public async Task<IActionResult> SaveVerification([FromBody] List<VerificationSaveModel> items)
+        private async Task SaveAttachmentPath(OracleConnection conn, string crfId, string requestId, string path)
         {
-            if (items == null || items.Count == 0)
-                return BadRequest("No data to save");
+            var sql = @"UPDATE tbl_qa_rls_verify 
+                       SET attachment_path = :path 
+                       WHERE crf_id = :crfId AND request_id = :reqId";
 
-            var userName = GetCurrentUserName();
-
-            try
-            {
-                using var conn = new OracleConnection(_connStr);
-                await conn.OpenAsync();
-
-                using var cmd = new OracleCommand("PROC_DAILY_VERIFICATION_MASTER", conn)
-                {
-                    CommandType = CommandType.StoredProcedure
-                };
-
-                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = "SAVE";
-                cmd.Parameters.Add("p_from_date", OracleDbType.Varchar2).Value = DBNull.Value;
-                cmd.Parameters.Add("p_to_date", OracleDbType.Varchar2).Value = DBNull.Value;
-                cmd.Parameters.Add("p_release_type", OracleDbType.Varchar2).Value = DBNull.Value;
-                cmd.Parameters.Add("p_tester_tl", OracleDbType.Varchar2).Value = DBNull.Value;
-                cmd.Parameters.Add("p_tester_name", OracleDbType.Varchar2).Value = DBNull.Value;
-
-                // Ensure proper JSON serialization
-                var jsonSettings = new JsonSerializerSettings
-                {
-                    NullValueHandling = NullValueHandling.Include,
-                    Formatting = Formatting.None
-                };
-
-                var jsonInput = JsonConvert.SerializeObject(items, jsonSettings);
-                _logger.LogInformation("JSON Input: {JsonInput}", jsonInput);
-
-                cmd.Parameters.Add("p_json_input", OracleDbType.Clob).Value = jsonInput;
-                cmd.Parameters.Add("p_updated_by", OracleDbType.Varchar2).Value = userName;
-                cmd.Parameters.Add("p_result", OracleDbType.RefCursor).Direction = ParameterDirection.Output;
-
-                using var rdr = await cmd.ExecuteReaderAsync();
-
-                if (await rdr.ReadAsync())
-                {
-                    var status = rdr["status"]?.ToString();
-                    var message = rdr["message"]?.ToString();
-
-                    _logger.LogInformation("Procedure response - Status: {Status}, Message: {Message}", status, message);
-
-                    if (status == "SUCCESS")
-                        return Ok(new { message });
-                    else
-                        return StatusCode(500, new { error = message });
-                }
-
-                return Ok(new { message = "Saved successfully" });
-            }
-            catch (OracleException oEx)
-            {
-                _logger.LogError(oEx, "Oracle error saving verification. Error Code: {ErrorCode}", oEx.Number);
-                return StatusCode(500, new
-                {
-                    error = "Database error occurred",
-                    details = oEx.Message,
-                    errorCode = oEx.Number
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error saving verification");
-                return StatusCode(500, new { error = "Save failed", details = ex.Message });
-            }
-        }
-        // GET: api/DailyVerification/Attachment/{crfId}/{releaseDate}
-        [HttpGet("Attachment/{crfId}/{releaseDate}")]
-        [AllowAnonymous]
-        public async Task<IActionResult> GetAttachment(string crfId, string releaseDate)
-        {
-            if (string.IsNullOrWhiteSpace(crfId) || string.IsNullOrWhiteSpace(releaseDate))
-                return BadRequest("Invalid parameters");
-
-            try
-            {
-                using var conn = new OracleConnection(_connStr);
-                await conn.OpenAsync();
-
-                using var cmd = new OracleCommand(@"
-                SELECT attachment, attachment_filename, attachment_mimetype
-                FROM tbl_daily_release_verify
-                WHERE crf_id = :crfId
-                  AND TO_CHAR(release_dt, 'DD-MON-YYYY') = :releaseDate", conn);
-
-                cmd.Parameters.Add("crfId", OracleDbType.Varchar2).Value = crfId.Trim().ToUpper();
-                cmd.Parameters.Add("releaseDate", OracleDbType.Varchar2).Value = releaseDate;
-
-                using var reader = await cmd.ExecuteReaderAsync();
-
-                if (await reader.ReadAsync())
-                {
-                    var blob = reader["attachment"] as Oracle.ManagedDataAccess.Types.OracleBlob;
-                    var fileName = reader["attachment_filename"]?.ToString() ?? "attachment";
-                    var mimeType = reader["attachment_mimetype"]?.ToString() ?? "application/octet-stream";
-
-                    if (blob == null || blob.IsNull || blob.Length == 0)
-                    {
-                        return Content($"<div style='padding:40px;text-align:center;'>" +
-                                     $"<h3>No Attachment Found</h3>" +
-                                     $"<p>CRF ID: {crfId}, Release Date: {releaseDate}</p></div>", "text/html");
-                    }
-
-                    var stream = new MemoryStream();
-                    await blob.CopyToAsync(stream);
-                    stream.Position = 0;
-
-                    return File(stream, mimeType, fileName);
-                }
-
-                return NotFound("Attachment not found");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error fetching attachment");
-                return StatusCode(500, "Error retrieving attachment");
-            }
+            using var cmd = new OracleCommand(sql, conn);
+            cmd.Parameters.Add("path", OracleDbType.Varchar2).Value = path;
+            cmd.Parameters.Add("crfId", OracleDbType.Varchar2).Value = crfId;
+            cmd.Parameters.Add("reqId", OracleDbType.Varchar2).Value = requestId;
+            await cmd.ExecuteNonQueryAsync();
         }
 
-        private string GetCurrentUserName()
+        private async Task UpdateReleaseStatus(OracleConnection conn, string crfId, string requestId, int status)
         {
-            return User.FindFirst(ClaimTypes.GivenName)?.Value ??
-                   User.FindFirst(ClaimTypes.Name)?.Value ??
-                   User.FindFirst("unique_name")?.Value ??
-                   "Unknown User";
+            var sql = @"UPDATE mana0809.srm_dailyrelease_updn 
+                       SET status = :status, updated_on = SYSDATE 
+                       WHERE crf_id = :crfId AND request_id = :reqId 
+                       AND seq_rr = (SELECT MAX(seq_rr) FROM mana0809.srm_dailyrelease_updn 
+                                     WHERE crf_id = :crfId AND request_id = :reqId)";
+
+            using var cmd = new OracleCommand(sql, conn);
+            cmd.Parameters.Add("status", OracleDbType.Int32).Value = status;
+            cmd.Parameters.Add("crfId", OracleDbType.Varchar2).Value = crfId;
+            cmd.Parameters.Add("reqId", OracleDbType.Varchar2).Value = requestId;
+            await cmd.ExecuteNonQueryAsync();
         }
     }
 
-    // Models
-    public class VerificationSaveModel
+    public class VerificationSubmitModel
     {
-        [JsonProperty("crfId")]  // Add JSON property attributes
-        public string CrfId { get; set; } = "";
-
-        [JsonProperty("requestId")]
-        public string? RequestId { get; set; }
-
-        [JsonProperty("workingStatus")]
+        public string CrfId { get; set; } = string.Empty;
+        public string RequestId { get; set; } = string.Empty;
         public int WorkingStatus { get; set; }
+        public string Remarks { get; set; } = string.Empty;
+        public IFormFile? Attachment { get; set; }
+    }
 
-        [JsonProperty("remarks")]
-        public string Remarks { get; set; } = "";
-
-        [JsonProperty("attachmentName")]
-        public string? AttachmentName { get; set; }
-
-        [JsonProperty("attachmentBase64")]
-        public string? AttachmentBase64 { get; set; }
-
-        [JsonProperty("attachmentMime")]
-        public string? AttachmentMime { get; set; }
+    public class TLVerificationModel
+    {
+        public string CrfId { get; set; } = string.Empty;
+        public string RequestId { get; set; } = string.Empty;
+        public int WorkingStatus { get; set; }
+        public string Remarks { get; set; } = string.Empty;
+        public int StatusId { get; set; }
     }
 }

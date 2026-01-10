@@ -432,7 +432,105 @@ namespace QA.API.Controllers
                    User.FindFirst("unique_name")?.Value ??
                    "Unknown User";
         }
+        [HttpGet("dashboardcounts")]
+        public async Task<IActionResult> GetDashboardCounts()
+        {
+            var userName = GetCurrentUserName();
+
+            if (userName == "Unknown User")
+                return Unauthorized("User not identified");
+
+            var techLeads = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "JIJIN E H", "MURUGESAN P", "NIKHIL SEKHAR", "SMINA BENNY", "VISAGH S", "JOBY JOSE"
+    };
+
+            bool isTechLead = techLeads.Contains(userName.Trim());
+
+            int testerPendingCount = 0;
+            int tlPendingCount = 0;
+            int tlVerifiedCount = 0;
+            int teamPendingCount = 0;
+            int teamCompletedCount = 0;
+
+            try
+            {
+                using var conn = new OracleConnection(_connStr);
+                await conn.OpenAsync();
+
+                // 1. Tester Pending: All assigned released CRFs not yet TL-approved
+                using (var cmd = new OracleCommand(@"
+            SELECT COUNT(DISTINCT n.crf_id || TO_CHAR(n.updated_on, 'DD-MON-YYYY')) AS cnt
+            FROM mana0809.srm_dailyrelease_updn n
+            WHERE EXISTS (
+                SELECT 1
+                FROM mana0809.srm_test_assign ts
+                JOIN mana0809.employee_master e ON TO_CHAR(ts.assign_to) = TO_CHAR(e.emp_code)
+                WHERE TO_CHAR(ts.request_id) = TO_CHAR(n.request_id)
+                  AND UPPER(e.emp_name) = UPPER(:p_tester_name)
+                  AND e.status_id = 1
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM tbl_daily_release_verify v
+                WHERE UPPER(TRIM(v.crf_id)) = UPPER(TRIM(n.crf_id))
+                  AND TRUNC(v.release_dt) = TRUNC(n.updated_on)
+                  AND v.status = 2  -- TL Approved
+            )", conn))
+                {
+                    cmd.Parameters.Add("p_tester_name", OracleDbType.Varchar2).Value = userName;
+                    var result = await cmd.ExecuteScalarAsync();
+                    testerPendingCount = result != null ? Convert.ToInt32(result) : 0;
+                }
+
+                if (isTechLead)
+                {
+                    // 2. TL Pending: Tester verified/updated, awaiting TL action
+                    using (var cmd = new OracleCommand(@"
+                SELECT COUNT(*) AS cnt
+                FROM tbl_daily_release_verify v
+                WHERE UPPER(TRIM(v.techlead_name)) = UPPER(:p_tl_name)
+                  AND v.status IN (1, 4)", conn))
+                    {
+                        cmd.Parameters.Add("p_tl_name", OracleDbType.Varchar2).Value = userName;
+                        var result = await cmd.ExecuteScalarAsync();
+                        tlPendingCount = result != null ? Convert.ToInt32(result) : 0;
+                    }
+
+                    // 3. TL Verified/Completed
+                    using (var cmd = new OracleCommand(@"
+                SELECT COUNT(*) AS cnt
+                FROM tbl_daily_release_verify v
+                WHERE UPPER(TRIM(v.techlead_name)) = UPPER(:p_tl_name)
+                  AND v.status = 2", conn))
+                    {
+                        cmd.Parameters.Add("p_tl_name", OracleDbType.Varchar2).Value = userName;
+                        var result = await cmd.ExecuteScalarAsync();
+                        tlVerifiedCount = result != null ? Convert.ToInt32(result) : 0;
+                    }
+
+                    teamPendingCount = tlPendingCount;
+                    teamCompletedCount = tlVerifiedCount;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetDashboardCounts for user {UserName}", userName);
+                return StatusCode(500, new { error = "Failed to calculate dashboard counts", details = ex.Message });
+            }
+
+            return Ok(new
+            {
+                IsTechLead = isTechLead,
+                TesterPendingCount = testerPendingCount,
+                TlPendingCount = tlPendingCount,
+                TlVerifiedCount = tlVerifiedCount,
+                TeamPendingCount = teamPendingCount,
+                TeamCompletedCount = teamCompletedCount
+            });
+        }
     }
+
 
     // =====================================================================
     // MODELS

@@ -1,6 +1,28 @@
 ﻿@{
     ViewData["Title"] = "Dashboard";
     Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+
+    string currentUserName = "Unknown";
+    try
+    {
+        var token = Context.Request.Cookies["jwtToken"] ??
+                    Context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(token))
+        {
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(token);
+            currentUserName = jwtToken.Claims
+                .FirstOrDefault(c => c.Type == "given_name" || c.Type == "name" || c.Type == "unique_name")?.Value
+                ?? "Unknown";
+        }
+    }
+    catch { }
+
+    var techLeads = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "JIJIN E H", "MURUGESAN P", "NIKHIL SEKHAR", "SMINA BENNY", "VISAGH S", "JOBY JOSE"
+    };
+    bool isTechLead = techLeads.Contains(currentUserName.Trim());
 }
 
 <div class="content-container">
@@ -13,16 +35,14 @@
     </div>
 
     <!-- Dashboard Cards -->
-    <div class="row g-4">
-        <!-- Release Status -->
+    <div class="row g-4" id="dashboardCards">
+        <!-- Existing Cards -->
         <div class="col-lg-3 col-md-6">
             <div class="card border-left-primary shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Release Status
-                            </div>
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Release Status</div>
                             <div class="h5 mb-0 font-weight-bold text-gray-800">v2.4.1 - Live</div>
                         </div>
                         <div class="col-auto">
@@ -33,15 +53,12 @@
             </div>
         </div>
 
-        <!-- CRF List (Pending) -->
         <div class="col-lg-3 col-md-6">
             <div class="card border-left-warning shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                CRF List (Pending)
-                            </div>
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">CRF List (Pending)</div>
                             <div class="h5 mb-0 font-weight-bold text-gray-800">18</div>
                         </div>
                         <div class="col-auto">
@@ -52,15 +69,12 @@
             </div>
         </div>
 
-        <!-- Test Cases -->
         <div class="col-lg-3 col-md-6">
             <div class="card border-left-info shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Test Cases
-                            </div>
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Test Cases</div>
                             <div class="h5 mb-0 font-weight-bold text-gray-800">156</div>
                         </div>
                         <div class="col-auto">
@@ -71,15 +85,12 @@
             </div>
         </div>
 
-        <!-- Bug Reports (Open) -->
         <div class="col-lg-3 col-md-6">
             <div class="card border-left-danger shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
                         <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
-                                Bug Reports (Open)
-                            </div>
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Bug Reports (Open)</div>
                             <div class="h5 mb-0 font-weight-bold text-gray-800">8</div>
                         </div>
                         <div class="col-auto">
@@ -89,24 +100,137 @@
                 </div>
             </div>
         </div>
+
+        <div class="col-lg-3 col-md-6">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                My Pending Verifications
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="testerPendingCount">0</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clock fa-2x text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TL Only Section -->
+        <div id="tlOnlySection" style="display:none;">
+            <!-- TL Personal: Verification Pending -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-left-orange shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-orange text-uppercase mb-1">
+                                    TL Verification Pending
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="tlPendingCount">0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-hourglass-half fa-2x text-orange"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TL Personal: Verified -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-left-teal shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-teal text-uppercase mb-1">
+                                    TL Verified
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="tlVerifiedCount">0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-check-double fa-2x text-teal"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NEW: Team Pending -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                    Team Pending Verifications
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="teamPendingCount">0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-users fa-2x text-warning"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NEW: Team Completed -->
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-left-success shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                    Team Completed Verifications
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="teamCompletedCount">0</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-trophy fa-2x text-success"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Updated Graph: Team Progress -->
+            <div class="col-lg-6 col-md-12">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0">Team Verification Progress</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="teamVerificationChart" height="180"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <style>
-    .border-left-primary {
-        border-left: 0.25rem solid #4e73df !important;
+    .border-left-success {
+        border-left: 0.25rem solid #1cc88a !important;
     }
 
-    .border-left-warning {
-        border-left: 0.25rem solid #f6c23e !important;
+    .border-left-orange {
+        border-left: 0.25rem solid #fd7e14 !important;
     }
 
-    .border-left-info {
-        border-left: 0.25rem solid #36b9cc !important;
+    .border-left-teal {
+        border-left: 0.25rem solid #20c9a6 !important;
     }
 
-    .border-left-danger {
-        border-left: 0.25rem solid #e74a3b !important;
+    .text-orange {
+        color: #fd7e14 !important;
+    }
+
+    .text-teal {
+        color: #20c9a6 !important;
     }
 
     .content-container {
@@ -114,8 +238,10 @@
     }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", async () => {
+        // Existing welcome name logic
         let empName = localStorage.getItem('empName');
         if (!empName || empName === "null" || empName === "") {
             const token = localStorage.getItem('jwtToken');
@@ -127,5 +253,68 @@
             }
         }
         document.getElementById("welcomeUserName").textContent = (empName || "User").toUpperCase();
+
+        // Fetch dashboard counts
+        try {
+            const token = document.cookie.match(/jwtToken=([^;]+)/)?.[1] || localStorage.getItem('jwtToken');
+            const res = await fetch('https://localhost:7118/api/Verification/dashboardcounts', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!res.ok) throw new Error('Failed to fetch counts');
+            const data = await res.json();
+
+            // Tester view
+            document.getElementById('testerPendingCount').textContent = data.TesterPendingCount;
+
+            // TL view
+            if (data.IsTechLead) {
+                document.getElementById('tlOnlySection').style.display = 'block';
+
+                // Personal TL
+                document.getElementById('tlPendingCount').textContent = data.TlPendingCount;
+                document.getElementById('tlVerifiedCount').textContent = data.TlVerifiedCount;
+
+                // Team
+                document.getElementById('teamPendingCount').textContent = data.TeamPendingCount;
+                document.getElementById('teamCompletedCount').textContent = data.TeamCompletedCount;
+
+                const teamTotal = data.TeamPendingCount + data.TeamCompletedCount;
+                const completedPercent = teamTotal > 0 ? Math.round((data.TeamCompletedCount / teamTotal) * 100) : 0;
+
+                // Team Progress Chart
+                const ctx = document.getElementById('teamVerificationChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [`Completed (${completedPercent}%)`, `Pending (${100 - completedPercent}%)`],
+                        datasets: [{
+                            data: [data.TeamCompletedCount, data.TeamPendingCount],
+                            backgroundColor: ['#1cc88a', '#f6c23e'],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (context) {
+                                        const value = context.parsed;
+                                        const percent = teamTotal > 0 ? Math.round((value / teamTotal) * 100) : 0;
+                                        return `${context.label.split(' ')[0]}: ${value} (${percent}%)`;
+                                    }
+                                }
+                            }
+                        },
+                        cutout: '70%',
+                        animation: { animateRotate: true }
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Dashboard error:", err);
+        }
     });
 </script>
