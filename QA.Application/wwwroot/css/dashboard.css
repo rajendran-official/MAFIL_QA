@@ -7,12 +7,17 @@
 
 body {
     font-family: 'Poppins', sans-serif;
-    background: linear-gradient(135deg, #4a148c, #9c27b0);
+    background: #ffffff; /* ← changed to solid white */
     color: #333;
     font-size: 13px;
     line-height: 1.5;
     overflow-x: hidden;
+    transition: background 0.4s ease, color 0.4s ease;
 }
+    body.dark-mode {
+        background: #121212;
+        color: #e0e0e0;
+    }
 
 /* Navbar - Always fixed */
 .navbar {
@@ -30,27 +35,24 @@ body {
         padding: 0 0.5rem;
     }
 
-/* Hamburger - ALWAYS VISIBLE */
 .menu-toggle {
-    background: none;
+    z-index: 1200;
+    background: rgba(255,255,255,0.2);
     border: none;
-    font-size: 1.3rem;
-    color: white;
-    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    width: 40px;
+    height: 40px;
     display: flex !important;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.2s;
-    border-radius: 6px;
-    min-width: 38px;
-    height: 38px;
-    flex-shrink: 0;
-    margin-right: 0.25rem;
+    transition: all 0.2s;
 }
 
+
     .menu-toggle:hover {
-        background: rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.4);
+        transform: scale(1.1);
     }
 
 /* Portal Name */
@@ -65,7 +67,6 @@ body {
     min-width: 0;
 }
 
-/* Sidebar - EXPANDED by default on desktop */
 .sidebar {
     position: fixed;
     top: 0;
@@ -74,31 +75,82 @@ body {
     height: 100vh;
     background: linear-gradient(to bottom, #6a1b9a, #4a148c);
     z-index: 1050;
-    transition: transform 0.3s ease;
+    transition: width 0.3s ease;
     box-shadow: 2px 0 10px rgba(0,0,0,0.3);
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
-    transform: translateX(0); /* visible */
 }
 
     .sidebar.collapsed {
-        transform: translateX(-280px); /* hidden */
+        width: 60px;
+        overflow: visible;
     }
+        .sidebar.collapsed .sidebar-logo,
+        .sidebar.collapsed .sidebar-header,
+        .sidebar.collapsed .sidebar-menu {
+            display: none;
+        }
 
-/* Main Content */
+
 .main-content {
-    margin-left: 280px; /* shifted when sidebar visible */
+    margin-left: 280px;
     margin-top: 56px;
-    padding: 1.25rem;
-    background: white;
+    transition: margin-left 0.3s ease, background 0.4s ease;
     min-height: calc(100vh - 56px);
-    transition: margin-left 0.3s ease;
+    background: #ffffff; /* default light */
 }
+
+body.dark-mode .main-content {
+    background: #121212;
+}
+.card {
+    background: #ffffff;
+    color: #333;
+    transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+}
+body.dark-mode .card {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6) !important;
+}
+.text-gray-800 {
+    color: #333 !important;
+}
+body.dark-mode .text-gray-800 {
+    color: #e0e0e0 !important;
+}
+.text-muted {
+    color: #6c757d !important;
+}
+body.dark-mode .text-muted {
+    color: #a0a0a0 !important;
+}
+    .main-content.expanded {
+        margin-left: 60px !important;
+    }
 
     .main-content.full-width {
         margin-left: 0; /* full width when sidebar collapsed */
     }
+
+/* Mobile behavior */
+@media (max-width: 992px) {
+    .sidebar {
+        transform: translateX(-280px);
+        width: 280px;
+    }
+
+        .sidebar.show {
+            transform: translateX(0);
+        }
+
+    .main-content {
+        margin-left: 0 !important;
+    }
+
+    .sidebar-overlay {
+        display: block;
+    }
+}
 
 /* Sidebar internal styles (same as before) */
 .sidebar-logo {
@@ -178,23 +230,6 @@ body {
         visibility: visible;
     }
 
-/* Mobile (<992px) */
-@media (max-width: 992px) {
-    .sidebar {
-        transform: translateX(-280px);
-    }
 
-        .sidebar.show {
-            transform: translateX(0);
-        }
-
-    .main-content {
-        margin-left: 0 !important;
-    }
-
-    .sidebar-overlay {
-        display: block;
-    }
-}
 
 

@@ -13,6 +13,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-p5F1b1LqF7fJ2l3uA0rZ8K5bH6f8p9fREqDVfM0I8eV6iJ9fS1d8Z3Yk1oN1rI3nH0s1i6f8fB8u5uWjJt0d9m8Q==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="~/css/login.css" asp-append-version="true" />
+    
 </head>
 <body>
     <div class="login-container">
@@ -26,18 +27,23 @@
             <h2 class="text-center mb-4">Employee Login</h2>
             <div id="errorMessage"></div>
             <form id="loginForm" autocomplete="off">
-                <!-- Fake fields to prevent autocomplete -->
-                <input type="text" style="display:none;" />
-                <input type="password" style="display:none;" />
+                <!-- Anti-autocomplete trick -->
+                <input type="text" name="fakeuser" style="display:none;" />
+                <input type="password" name="fakepass" style="display:none;" />
+
                 <div class="form-group">
-                    <label for="EmpCode">Emp Code</label>
-                    <input type="text" id="EmpCode" class="form-control" placeholder="Enter Emp Code" required autofocus />
+                    <label for="EmpCode">Employee Code</label>
+                    <input type="text" id="EmpCode" class="form-control" placeholder="Enter Emp Code"
+                           required autofocus autocomplete="off" />
                 </div>
+
                 <div class="form-group">
                     <label for="Password">Password</label>
-                    <input type="password" id="Password" class="form-control" placeholder="Enter Password" required />
+                    <input type="password" id="Password" class="form-control" placeholder="Enter Password"
+                           required autocomplete="off" />
                 </div>
-                <button type="submit" class="btn-login">
+
+                <button type="submit" class="btn-login" id="loginButton">
                     <i class="fas fa-sign-in-alt me-2"></i> Login
                 </button>
             </form>
@@ -46,9 +52,13 @@
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
     <script>
+
         document.addEventListener("DOMContentLoaded", function () {
             const errorDiv = document.getElementById("errorMessage");
             const loginForm = document.getElementById("loginForm");
+            const loginBtn = document.getElementById("loginButton");
+            const empCodeInput = document.getElementById("EmpCode");
+
             // Get API base from server-side config
             const apiBase = '@Configuration["AppSettings:ApiBaseUrl"]'.trim();
             const loginUrl = apiBase ? `${apiBase}/api/Auth/login` : '/api/Auth/login';
@@ -58,6 +68,8 @@
                 const password = document.getElementById("Password").value;
                 // Clear previous alerts
                 errorDiv.innerHTML = "";
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Logging in...';
                 if (!empCode || !password) {
                     showAlert("Please enter both Emp Code and Password.", "warning");
                     return;
