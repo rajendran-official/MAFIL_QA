@@ -11,7 +11,6 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
-   
 </head>
 <body>
     <!-- Mobile Overlay -->
@@ -19,6 +18,9 @@
 
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
+        <button class="menu-toggle position-absolute top-0 end-0 mt-3 me-3 text-white" id="menuToggle" type="button">
+            <i class="fas fa-bars fa-lg"></i>
+        </button>
         <div class="sidebar-logo text-center py-3">
             <img src="https://annapurnafinance.in/wp-content/uploads/2023/10/Manappuram.png" alt="Manappuram Finance Limited" class="manappuram-logo">
         </div>
@@ -74,6 +76,12 @@
                         <i class="fas fa-list-alt me-3"></i> CRF List
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link @(Context.Request.Path.StartsWithSegments("/Home/Testcases") ? "active" : "")"
+                       asp-controller="Home" asp-action="Testcases">
+                        <i class="fas fa-vial me-3"></i> Testcases
+                    </a>
+                </li>
             </ul>
         </div>
     </div>
@@ -81,11 +89,12 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container-fluid">
-            <button class="menu-toggle" id="menuToggle">
-                <i class="fas fa-bars"></i>
-            </button>
-            <a class="navbar-brand fw-bold ms-2" href="#">QUALITY ASSURANCE TEAM Portal</a>
+            <a class="navbar-brand fw-bold" href="#">QUALITY ASSURANCE TEAM Portal</a>
             <div class="ms-auto d-flex align-items-center">
+                <div class="form-check form-switch me-3">
+                    <input class="form-check-input" type="checkbox" id="darkModeToggle" />
+                    <label class="form-check-label text-white small" for="darkModeToggle">Dark Mode</label>
+                </div>
                 <div class="dropdown">
                     <a class="text-white dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
                         <i class="fas fa-user-circle fa-xl me-2"></i>
@@ -110,12 +119,20 @@
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            // ────────────────────────────────────────────────
+            // Elements
+            // ────────────────────────────────────────────────
+            const body = document.body;
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
             const overlay = document.getElementById('sidebarOverlay');
-            const toggle = document.getElementById('menuToggle');
+            const menuToggle = document.getElementById('menuToggle');
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            const logoutBtn = document.getElementById('logoutBtn');
 
-            // Set username
+            // ────────────────────────────────────────────────
+            // Username from JWT / localStorage
+            // ────────────────────────────────────────────────
             let empName = localStorage.getItem('empName');
             if (!empName || empName === "null" || empName === "") {
                 const token = localStorage.getItem('jwtToken');
@@ -123,7 +140,9 @@
                     try {
                         const payload = JSON.parse(atob(token.split('.')[1]));
                         empName = payload.name || payload.fullname || payload.unique_name || payload.sub || "User";
-                    } catch (e) { empName = "User"; }
+                    } catch (e) {
+                        empName = "User";
+                    }
                 } else {
                     empName = "User";
                 }
@@ -133,46 +152,71 @@
                 document.getElementById('welcomeUserName').textContent = empName.toUpperCase();
             }
 
-            // Load saved sidebar state (optional - remembers collapse preference)
-            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (isCollapsed) {
-                sidebar.classList.add('collapsed');
-                mainContent.classList.add('expanded');
+            // ────────────────────────────────────────────────
+            // Sidebar initial state & toggle
+            // ────────────────────────────────────────────────
+            const isMobile = window.innerWidth <= 992;
+            const savedCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+
+            if (isMobile) {
+                sidebar.classList.remove('collapsed', 'show');
+                mainContent.classList.remove('expanded');
+            } else {
+                if (savedCollapsed) {
+                    sidebar.classList.add('collapsed');
+                    mainContent.classList.add('expanded');
+                }
             }
 
-            // Toggle sidebar
-            toggle.addEventListener('click', (e) => {
+            menuToggle.addEventListener('click', (e) => {
                 e.preventDefault();
-
                 if (window.innerWidth <= 992) {
-                    // Mobile: slide in/out with overlay
                     sidebar.classList.toggle('show');
                     overlay.classList.toggle('show');
                 } else {
-                    // Desktop: collapse/expand permanently
                     sidebar.classList.toggle('collapsed');
                     mainContent.classList.toggle('expanded');
-
-                    // Save preference
-                    const collapsed = sidebar.classList.contains('collapsed');
-                    localStorage.setItem('sidebarCollapsed', collapsed);
+                    localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
                 }
             });
 
-            // Close on overlay click (mobile only)
             overlay.addEventListener('click', () => {
                 sidebar.classList.remove('show');
                 overlay.classList.remove('show');
             });
 
+            // ────────────────────────────────────────────────
+            // Dark Mode
+            // ────────────────────────────────────────────────
+            if (localStorage.getItem('darkMode') === 'enabled') {
+                body.classList.add('dark-mode');
+                if (darkModeToggle) darkModeToggle.checked = true;
+            }
+
+            if (darkModeToggle) {
+                darkModeToggle.addEventListener('change', () => {
+                    if (darkModeToggle.checked) {
+                        body.classList.add('dark-mode');
+                        localStorage.setItem('darkMode', 'enabled');
+                    } else {
+                        body.classList.remove('dark-mode');
+                        localStorage.setItem('darkMode', 'disabled');
+                    }
+                });
+            }
+
+            // ────────────────────────────────────────────────
             // Logout
-            document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (confirm('Are you sure you want to logout?')) {
-                    localStorage.clear();
-                    window.location.href = '/Home/Login';
-                }
-            });
+            // ────────────────────────────────────────────────
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (confirm('Are you sure you want to logout?')) {
+                        localStorage.clear();
+                        window.location.href = '/Home/Login';
+                    }
+                });
+            }
         });
     </script>
 

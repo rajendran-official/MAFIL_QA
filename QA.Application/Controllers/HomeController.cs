@@ -410,6 +410,60 @@ namespace QA.Application.Controllers
 
             return View(model);
         }
+        [HttpGet]
+        public IActionResult Testcases()
+        {
+            var pendingCRFs = new List<PendingCRFModel>();
+
+            try
+            {
+                using var conn = new OracleConnection(_connStr);
+                conn.Open();
+
+                using var cmd = new OracleCommand("PROC_DAILY_REPORTS_MASTER", conn)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                cmd.Parameters.Add("p_flag", OracleDbType.Varchar2).Value = "TESTCASES_PENDING";
+                cmd.Parameters.Add("p_sub_flag", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_from_date", OracleDbType.Varchar2).Value = "01-NOV-2025"; // or make dynamic
+                cmd.Parameters.Add("p_to_date", OracleDbType.Varchar2).Value = "31-DEC-2026";
+                cmd.Parameters.Add("p_release_type", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_tester_tl", OracleDbType.Varchar2).Value = "NIKHIL SEKHAR"; // ← ideally from session / user claim
+                cmd.Parameters.Add("p_tester_name", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_json_input", OracleDbType.Clob).Value = DBNull.Value;
+                cmd.Parameters.Add("p_updated_by", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_emp_code", OracleDbType.Int32).Value = int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int empCode) ? empCode : 360175;
+                cmd.Parameters.Add("p_pageval", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_parval1", OracleDbType.Varchar2).Value = DBNull.Value;
+                cmd.Parameters.Add("p_result", OracleDbType.RefCursor).Direction = ParameterDirection.Output;
+
+                using var reader = cmd.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    pendingCRFs.Add(new PendingCRFModel
+                    {
+                        CRFID = reader["CRFID"]?.ToString() ?? "",
+                        REQUESTID = reader["REQUESTID"]?.ToString() ?? "",
+                        Objective = reader["objective"]?.ToString() ?? "",
+                        Testing_start_date = reader.IsDBNull(reader.GetOrdinal("Testing_start_date")) ? null : reader.GetDateTime(reader.GetOrdinal("Testing_start_date")),
+                        Testing_end_date = reader.IsDBNull(reader.GetOrdinal("Testing_end_date")) ? null : reader.GetDateTime(reader.GetOrdinal("Testing_end_date")),
+                        Developer = reader["Developer"]?.ToString() ?? "",
+                        Techlead = reader["Techlead"]?.ToString() ?? "",
+                        STATUS = reader["STATUS"]?.ToString() ?? ""
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading pending CRFs for testcases");
+                TempData["ErrorMessage"] = "Unable to load pending CRF list.";
+            }
+
+            return View(pendingCRFs);
+        }
 
         public JsonResult GetTestersForTL(string tlName)
         {

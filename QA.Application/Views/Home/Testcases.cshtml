@@ -1,0 +1,133 @@
+﻿@{
+    ViewData["Title"] = "Testcases";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";  // This ensures sidebar + navbar
+}
+
+<div class="container-fluid mt-4 px-3">
+    <!-- Page Title & Subtitle -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="mb-0 fw-bold text-primary">Testcases Management</h3>
+            <small class="text-muted">Upload & manage test cases for pending CRFs • Global QA checks</small>
+        </div>
+    </div>
+
+    <!-- Selection / Filter Card -->
+    <div class="card shadow border-0 mb-4">
+        <div class="card-header bg-gradient bg-primary text-white">
+            <h6 class="mb-0">Select CRF (Pending Testcase Upload)</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-5 col-md-6">
+                    <label class="form-label fw-semibold">CRF ID (Pending Cases Only)</label>
+                    <select id="crfDropdown" class="form-select">
+                        <option value="">-- Select CRF --</option>
+                        @foreach (var crf in Model ?? new List<PendingCRFModel>())
+                        {
+                            <option value="@crf.CRFID" data-details='@System.Text.Json.JsonSerializer.Serialize(crf)'>
+                                @crf.CRFID - @crf.Objective?.Substring(0, Math.Min(60, crf.Objective?.Length ?? 0))...
+                            </option>
+                        }
+                    </select>
+                    <div id="crfDetails" class="form-text small text-muted mt-1"></div>
+                </div>
+
+                <div class="col-lg-3 col-md-3">
+                    <button id="loadCrfBtn" class="btn btn-primary w-100">
+                        <i class="fas fa-sync me-2"></i> Load / Refresh
+                    </button>
+                </div>
+
+                <div class="col-lg-4 col-md-3 text-end">
+                    <button id="addNewTestcase" class="btn btn-success">
+                        <i class="fas fa-plus me-2"></i>Add New Test Case
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Card -->
+    <div class="card shadow border-0">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Test Cases List (<span id="testcaseCount">0</span>)</h5>
+            <div>
+                <button id="exportExcel" class="btn btn-light btn-sm me-2">
+                    <i class="fas fa-file-excel me-1"></i> Export
+                </button>
+                <button id="exitBtn" class="btn btn-light btn-sm">
+                    <i class="fas fa-sign-out-alt me-1"></i> Exit
+                </button>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-bordered mb-0" id="testcasesTable">
+                    <thead class="table-primary sticky-top">
+                        <tr>
+                            <th class="ps-3">TC-ID</th>
+                            <th>Test Case</th>
+                            <th>Expected</th>
+                            <th>Actual</th>
+                            <th>Priority</th>
+                            <th>Remarks</th>
+                            <th class="text-center" style="width:140px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Default rows or dynamically loaded -->
+                        <!-- Example placeholder rows -->
+                        <tr>
+                            <td class="ps-3 fw-bold">TC-47</td>
+                            <td>Lead list data loading & pagination</td>
+                            <td>Check whether lead list data and paginates correctly</td>
+                            <td></td>
+                            <td><span class="badge bg-danger">High</span></td>
+                            <td></td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-primary me-1 edit-btn">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger delete-btn">Delete</button>
+                            </td>
+                        </tr>
+                        <!-- Add more rows or use JS to populate -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="noDataMessage" class="text-center py-5 text-muted" style="display:none;">
+                <i class="fas fa-folder-open fa-3x mb-3 opacity-50"></i>
+                <h5>No test cases found for selected CRF</h5>
+                <p>Use "Add New Test Case" or select another CRF.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // CRF selection change - show details
+        document.getElementById('crfDropdown')?.addEventListener('change', function () {
+            const selected = this.options[this.selectedIndex];
+            const details = selected.dataset.details ? JSON.parse(selected.dataset.details) : null;
+
+            if (details) {
+                document.getElementById('crfDetails').innerHTML = `
+                            <strong>Objective:</strong> ${details.objective || 'N/A'}<br>
+                            <strong>Status:</strong> ${details.STATUS || 'N/A'}<br>
+                            <strong>Developer:</strong> ${details.Developer || 'N/A'}
+                        `;
+            } else {
+                document.getElementById('crfDetails').innerHTML = '';
+            }
+        });
+
+        // Exit button
+        document.getElementById('exitBtn')?.addEventListener('click', function () {
+            window.location.href = '@Url.Action("Dashboard", "Home")';
+        });
+
+        // Add more JS for edit/delete/upload/export as needed
+    </script>
+}
